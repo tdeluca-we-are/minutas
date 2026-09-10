@@ -190,6 +190,29 @@ input[type=date].inp,input[type=time].inp{color-scheme:dark}
 .min-frag{font-size:12px;color:var(--text3);line-height:1.5;margin-top:6px;max-width:900px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .min-der{display:flex;align-items:center;gap:6px;flex:none;padding-top:2px}
+/* semáforo de la reunión: el borde izquierdo pinta el clima (gana sobre el azul
+   de tactiq, que igual se marca con su pill) */
+.min.clima-verde{border-left-color:var(--green)}
+.min.clima-amarillo{border-left-color:var(--amber)}
+.min.clima-rojo{border-left-color:var(--red)}
+.sem{display:inline-flex;align-items:center;justify-content:center;border-radius:20px;padding:4px 11px;font-size:10px;
+  font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;border:1px solid transparent;white-space:nowrap;user-select:none}
+.sem:hover{outline:1px solid rgba(255,255,255,.4)}
+.sem.sm{padding:3px 9px;font-size:9.5px}
+.sem-verde{background:#16a34a;color:#fff}
+.sem-amarillo{background:#f59e0b;color:#3b2300}
+.sem-rojo{background:#dc2626;color:#fff}
+.sem-null{background:transparent;color:var(--text3);border:1px dashed var(--text3);font-weight:600;text-transform:none;letter-spacing:0}
+/* grupo de elección en el detalle */
+.clima-pick{display:flex;gap:7px;flex-wrap:wrap}
+.clima-opt{font-size:12px;font-weight:600;padding:7px 15px;border-radius:20px;cursor:pointer;background:var(--bg3);
+  border:1px solid var(--border2);color:var(--text2);display:inline-flex;align-items:center;gap:7px}
+.clima-opt:hover{border-color:var(--text3);color:var(--text)}
+.clima-opt .pt{width:9px;height:9px;border-radius:50%;flex:none}
+.clima-opt .pt.verde{background:var(--green)}.clima-opt .pt.amarillo{background:var(--amber)}.clima-opt .pt.rojo{background:var(--red)}
+.clima-opt.on.verde{background:rgba(34,197,94,.16);border-color:var(--green);color:#8ef0b0}
+.clima-opt.on.amarillo{background:rgba(245,158,11,.16);border-color:var(--amber);color:#f7c96a}
+.clima-opt.on.rojo{background:rgba(239,68,68,.16);border-color:var(--red);color:#ff9b9b}
 
 /* ===== pills ===== */
 .pill{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:20px;
@@ -472,6 +495,10 @@ const TIPOS = [
 const nombreTipo = k => (TIPOS.find(t=>t.k===k)||{n:'Otro'}).n;
 // El primero es "sin prioridad": el ciclo del botón vuelve ahí después de baja.
 const PRIOS = ['', 'alta', 'media', 'baja'];
+// Semáforo de cómo salió la reunión. Verde: en orden. Amarillo: hay temas para
+// seguir de cerca. Rojo: se complicó (cliente molesto, riesgo alto, algo urgente).
+const CLIMAS = [{k:'verde',n:'Bien'},{k:'amarillo',n:'Con temas'},{k:'rojo',n:'Complicada'}];
+const nombreClima = k => (CLIMAS.find(c=>c.k===k)||{n:''}).n;
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const MES3  = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const DOW   = ['dom','lun','mar','mié','jue','vie','sáb'];
@@ -482,7 +509,7 @@ let UID = null, MAIL = '', VERSION = 0, sincro = 'ok', reintento = null;
 let tab = 'minutas';
 let abierta = null;              // id de la minuta que se está viendo en detalle
 let volverA = 'minutas';         // a qué solapa vuelve el botón "atrás" del detalle
-let fTipo = 'todos', fMarca = 'todas', fPersona = 'todas', fDesde = '', fHasta = '', qLista = '';
+let fTipo = 'todos', fMarca = 'todas', fPersona = 'todas', fClima = 'todos', fDesde = '', fHasta = '', qLista = '';
 let fPend = 'pend', fPendResp = 'todos', fPendMarca = 'todas', fPendPrio = 'todas';
 let gVista = 'personas';         // solapa Gente: personas | marcas
 let gSel = null;                 // persona o marca seleccionada
@@ -522,6 +549,7 @@ function normMinuta(m){
   m.notas = m.notas || '';
   m.decisiones = m.decisiones || '';
   m.riesgos = m.riesgos || '';
+  m.clima = CLIMAS.some(c=>c.k===m.clima) ? m.clima : '';
   m.proxima = normFecha(m.proxima) || '';
   m.fuente = m.fuente === 'tactiq' ? 'tactiq' : 'manual';
   m.tactiqId = m.tactiqId || '';
@@ -791,6 +819,12 @@ function setCampo(id, campo, val){
   tocar(m); save();
 }
 function setCampoRe(id, campo, val){ setCampo(id, campo, val); saveNow(); render(); }
+// Tocar el clima ya marcado lo apaga: sirve para volver a "sin marcar".
+function setClima(id, val){
+  const m = M(id); if(!m) return;
+  m.clima = m.clima === val ? '' : val;
+  tocar(m); saveNow(); render();
+}
 
 function addChip(id, campo, inputEl){
   const m = M(id); if(!m) return;
@@ -839,6 +873,7 @@ function filtradas(){
     if(fTipo !== 'todos' && m.tipo !== fTipo) return false;
     if(fMarca !== 'todas' && (m.marca||'') !== fMarca) return false;
     if(fPersona !== 'todas' && !m.participantes.includes(fPersona)) return false;
+    if(fClima !== 'todos' && (m.clima||'') !== fClima) return false;
     if(fDesde && m.fecha < fDesde) return false;
     if(fHasta && m.fecha > fHasta) return false;
     if(q && textoDe(m).toLowerCase().indexOf(q) < 0) return false;
@@ -849,6 +884,7 @@ function setFiltro(cual, val){
   if(cual === 'tipo') fTipo = val;
   else if(cual === 'marca') fMarca = val;
   else if(cual === 'persona') fPersona = val;
+  else if(cual === 'clima') fClima = val;
   else if(cual === 'desde') fDesde = val;
   else if(cual === 'hasta') fHasta = val;
   render();
@@ -862,10 +898,10 @@ function setQLista(v){
   if(c) c.textContent = filtradas().length + ' de ' + S.minutas.length;
 }
 function limpiarFiltros(){
-  fTipo='todos'; fMarca='todas'; fPersona='todas'; fDesde=''; fHasta=''; qLista='';
+  fTipo='todos'; fMarca='todas'; fPersona='todas'; fClima='todos'; fDesde=''; fHasta=''; qLista='';
   render();
 }
-const hayFiltro = () => fTipo!=='todos' || fMarca!=='todas' || fPersona!=='todas' || fDesde || fHasta || qLista;
+const hayFiltro = () => fTipo!=='todos' || fMarca!=='todas' || fPersona!=='todas' || fClima!=='todos' || fDesde || fHasta || qLista;
 
 /* ---------- render: solapas ---------- */
 function render(){
@@ -921,12 +957,14 @@ function paneMinutas(){
   const ults = ordenadas().slice(0,1)[0];
   const vencidas = S.minutas.reduce((n,m)=>n + m.pendientes.filter(vencido).length, 0);
   const mes = S.minutas.filter(m => mesKey(m.fecha) === mesKey(hoyISO())).length;
+  const rojas = S.minutas.filter(m => m.clima === 'rojo').length;
 
   const kpis = '<div class="kpi-row">'+
     kpi('Minutas guardadas', S.minutas.length, S.minutas.length ? 'la última, '+fechaLarga(ults.fecha) : 'todavía ninguna', 'acc')+
     kpi('Este mes', mes, mesLabel(mesKey(hoyISO())), '')+
     kpi('Pendientes abiertos', S.minutas.reduce((n,m)=>n+pendAbiertos(m),0), 'de todas las reuniones', '')+
     kpi('Vencidos', vencidas, vencidas ? 'con fecha pasada' : 'ninguno atrasado', vencidas ? 'bad' : 'ok')+
+    kpi('Reuniones complicadas', rojas, rojas ? 'marcadas en rojo' : 'ninguna en rojo', rojas ? 'bad' : 'ok')+
   '</div>';
 
   const opt = (v,val,txt) => '<option value="'+esc(val)+'"'+(v===val?' selected':'')+'>'+esc(txt)+'</option>';
@@ -938,6 +976,8 @@ function paneMinutas(){
       opt(fMarca,'todas','Todas las marcas')+marcas().map(x=>opt(fMarca,x,x)).join('')+'</select>'+
     '<select class="inp" onchange="setFiltro(\'persona\',this.value)">'+
       opt(fPersona,'todas','Cualquier participante')+personas().map(x=>opt(fPersona,x,x)).join('')+'</select>'+
+    '<select class="inp" onchange="setFiltro(\'clima\',this.value)">'+
+      opt(fClima,'todos','Cualquier clima')+CLIMAS.map(c=>opt(fClima,c.k,c.n)).join('')+'</select>'+
     '<span class="flt-lbl">Desde</span><input class="inp" type="date" value="'+esc(fDesde)+'" onchange="setFiltro(\'desde\',this.value)">'+
     '<span class="flt-lbl">Hasta</span><input class="inp" type="date" value="'+esc(fHasta)+'" onchange="setFiltro(\'hasta\',this.value)">'+
     '<input class="inp" data-k="q-lista" type="search" placeholder="Filtrar por texto…" value="'+esc(qLista)+'" oninput="setQLista(this.value)" style="min-width:180px">'+
@@ -984,7 +1024,7 @@ function filaMinuta(m){
   const d = parseISO(m.fecha);
   const ab = pendAbiertos(m), venc = m.pendientes.filter(vencido).length;
   const frag = toText(m.notas) || toText(m.decisiones) || toText(m.objetivo);
-  return '<div class="min'+(m.fuente==='tactiq'?' tactiq':'')+'" onclick="abrirMinuta('+jsArg(m.id)+')">'+
+  return '<div class="min'+(m.clima?' clima-'+m.clima:(m.fuente==='tactiq'?' tactiq':''))+'" onclick="abrirMinuta('+jsArg(m.id)+')">'+
     '<div class="fbox"><div class="d">'+d.getDate()+'</div><div class="m">'+MES3[d.getMonth()]+'</div>'+
       '<div class="dow">'+DOW[d.getDay()]+'</div></div>'+
     '<div class="min-mid">'+
@@ -1001,6 +1041,7 @@ function filaMinuta(m){
       (frag ? '<div class="min-frag">'+esc(recorte(frag.replace(/\n+/g,' · '), 260))+'</div>' : '')+
     '</div>'+
     '<div class="min-der">'+
+      (m.clima ? '<span class="sem sm sem-'+m.clima+'" title="Cómo salió la reunión">'+nombreClima(m.clima)+'</span>' : '')+
       (ab ? '<span class="pill pend'+(venc?'':' ok')+'" title="'+ab+' pendiente(s) abierto(s)'+
             (venc?', '+venc+' vencido(s)':'')+'">'+ab+' pend'+(venc?' · '+venc+' venc':'')+'</span>' : '')+
     '</div>'+
@@ -1056,6 +1097,11 @@ function paneDetalle(){
         '<input class="chip-add" data-k="add-tags" list="dl-tags" placeholder="+ etiqueta (Enter)" '+
           'onkeydown="if(event.key===\'Enter\'){event.preventDefault();addChip('+a+',\'tags\',this)}" '+
           'onblur="addChip('+a+',\'tags\',this)">'+
+      '</div></div>'+
+    '<div class="fld" style="margin-top:12px"><label>¿Cómo salió la reunión?</label>'+
+      '<div class="clima-pick">'+
+        CLIMAS.map(c=>'<button class="clima-opt '+c.k+(m.clima===c.k?' on':'')+'" '+
+          'onclick="setClima('+a+','+jsArg(c.k)+')"><span class="pt '+c.k+'"></span>'+c.n+'</button>').join('')+
       '</div></div>'+
   '</div></div>';
 
@@ -1270,6 +1316,9 @@ const PROMPT_RESUMEN = [
   'Marca: <la marca o cuenta, si aplica>',
   'Participantes: <nombres separados por coma>',
   'Etiquetas: <dos o tres palabras clave separadas por coma>',
+  'Clima: verde | amarillo | rojo',
+  '   (verde = salió en orden; amarillo = hay temas para seguir de cerca;',
+  '    rojo = se complicó: cliente molesto, riesgo alto o algo urgente)',
   '',
   'OBJETIVO',
   'Una o dos líneas: para qué era la reunión.',
@@ -1446,7 +1495,8 @@ function previewHTML(lista){
       const plano = v => toText(v).replace(/\n+/g,' · ').replace(/(?:\s*·\s*){2,}/g,' · ').replace(/^\s*·\s*/,'');
       const campo = (lbl, v) => v ? '<div class="ip-l"><b>'+lbl+':</b> '+esc(recorte(plano(v), 130))+'</div>' : '';
       return '<div class="ip">'+
-        '<div class="ip-t">'+esc(m.titulo || '⚠ sin título')+'</div>'+
+        '<div class="ip-t">'+esc(m.titulo || '⚠ sin título')+
+          (m.clima ? ' <span class="sem sm sem-'+m.clima+'">'+nombreClima(m.clima)+'</span>' : '')+'</div>'+
         '<div class="ip-m">'+esc(fechaLarga(m.fecha))+(m.hora?' · '+esc(m.hora):'')+
           ' · '+esc(nombreTipo(m.tipo))+(m.marca?' · '+esc(m.marca):'')+'</div>'+
         (m.participantes.length ? '<div class="ip-l"><b>Participantes:</b> '+esc(m.participantes.join(', '))+'</div>' : '')+
@@ -1494,10 +1544,33 @@ const CLAVES = [
   {campo:'participantes', rx:/^(participantes|asistentes|presentes|quienes?|con)$/i},
   {campo:'tags',          rx:/^(etiquetas|tags|temas clave)$/i},
   {campo:'proxima',       rx:/^(pr[oó]xima|pr[oó]xima reuni[oó]n|siguiente reuni[oó]n)$/i},
-  {campo:'tactiqUrl',     rx:/^(tactiq|link|url|grabaci[oó]n)$/i}
+  {campo:'tactiqUrl',     rx:/^(tactiq|link|url|grabaci[oó]n)$/i},
+  {campo:'clima',         rx:/^(clima|sem[aá]foro|estado|term[oó]metro|c[oó]mo sali[oó])$/i}
 ];
 const RX_KV = /^\s*[*-]?\s*\**([A-Za-zÁÉÍÓÚÜÑáéíóúüñ /]{2,28})\**\s*:\s*(.*)$/;
 const CLAVES_EN_SECCION = ['proxima','tactiqUrl'];
+// Mapea lo que venga en "Clima:" al verde/amarillo/rojo. Los sinónimos son los
+// que Claude o vos podrían escribir; lo que no cae en ninguno queda sin marcar.
+function normClima(v){
+  const t = String(v||'').toLowerCase();
+  // Rojo antes que amarillo: "rojo" contiene "ojo" (sinónimo de amarillo) y si no
+  // el color se iba a amarillo. Los tokens cortos y traicioneros (mal, ojo, media)
+  // van con \b para no picar dentro de "normal", "rojo" o "inmediato".
+  if(/rojo|cr[ií]tic|tens|complicad|negativ|malestar|urgente|grave|\bmal\b/.test(t)) return 'rojo';
+  if(/verde|bien|ok|positiv|buena|en orden|tranquil|sin problema/.test(t)) return 'verde';
+  if(/amarill|regular|atenci|mixt|con temas|a seguir|\bmedia\b|\bojo\b/.test(t)) return 'amarillo';
+  return '';
+}
+// Si el resumen no trae "Clima:", lo deducimos de los riesgos y de lo hablado.
+// Es una sugerencia editable: mejor arrancar con un color que en blanco.
+function climaSugerido(m){
+  const rie = toText(m.riesgos).toLowerCase();
+  const todo = (rie + ' ' + toText(m.notas)).toLowerCase();
+  if(/\(alto\)|molest|enojad|cr[ií]tic|tens[oa]|desconfian|reclamo|queja|malestar|urgente|no aparec|se cae|perd(er|imos)/.test(todo)) return 'rojo';
+  if(rie.trim() || /\(medio\)|reticen|no.*convencid|preocupa|demora|atrasad|riesgo|ojo|pendiente/.test(todo)) return 'amarillo';
+  if(toText(m.decisiones).trim() || toText(m.notas).trim()) return 'verde';
+  return '';
+}
 // Quita los paréntesis solo si envuelven todo: "(Marisa)" sí, "Cliente (Marisa)" no.
 function sinParen(s){ const m = String(s).trim().match(/^\((.*)\)$/); return (m ? m[1] : s).trim(); }
 // Deja la línea desnuda para poder reconocerla: sin ##, sin **, sin numeración
@@ -1565,6 +1638,8 @@ function parseBloque(bloque){
           m[k.campo] = v.split(/[,;|]+/).map(x=>x.replace(/^y\s+/i,'').trim()).filter(Boolean);
         } else if(k.campo === 'fecha' || k.campo === 'proxima'){
           m[k.campo] = normFecha(v) || fechaSuelta(v);
+        } else if(k.campo === 'clima'){
+          m.clima = normClima(v);
         } else m[k.campo] = v;
         vistoAlgo = true;
         return;
@@ -1600,6 +1675,7 @@ function parseBloque(bloque){
   m.pendientes = buf.pendientes.map(x => parsePendiente(x.l, m.fecha)).filter(p => p && p.texto);
 
   m.tipo = tipoDesde(m.tipo, m.titulo, m.marca);
+  if(!m.clima) m.clima = climaSugerido(m);   // sin "Clima:" explícito, lo deducimos
   // fechas de pendiente sin año: caen en el año de la reunión
   m.pendientes.forEach(p=>{ if(p._sinAnio) p.fecha = conAnio(p.fecha, m.fecha); delete p._sinAnio; });
   if(!m.titulo && !toText(m.notas)) return null;
@@ -1784,6 +1860,7 @@ function reporteDe(m){
   L.push(fechaLarga(m.fecha) + (m.hora ? ' · '+m.hora : '') + ' · ' + nombreTipo(m.tipo) + (m.marca ? ' · '+m.marca : ''));
   if(m.participantes.length) L.push('Participantes: '+m.participantes.join(', '));
   if(m.tags.length) L.push('Etiquetas: '+m.tags.join(', '));
+  if(m.clima) L.push('Clima: '+m.clima+' ('+nombreClima(m.clima)+')');
   L.push('');
   if(toText(m.objetivo)){ L.push('OBJETIVO'); L.push(toText(m.objetivo)); L.push(''); }
   if(toText(m.notas)){ L.push('QUÉ SE HABLÓ'); L.push(toText(m.notas)); L.push(''); }

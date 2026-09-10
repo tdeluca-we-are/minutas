@@ -31,9 +31,15 @@ mismo que la local apenas iniciás sesión.
 
 - **Minutas** — historial completo agrupado por mes, con filtros por tipo, marca,
   participante y rango de fechas, más un filtro de texto sobre todo el contenido.
-- **Detalle** — título, fecha, hora, tipo, marca, participantes y etiquetas; cuatro bloques
-  de notas con formato (objetivo, qué se habló, decisiones y riesgos), pendientes con
-  responsable y fecha, y las reuniones anteriores de la misma marca o con la misma gente.
+- **Detalle** — título, fecha, hora, tipo, marca, participantes, etiquetas y un **semáforo
+  de cómo salió** la reunión (verde / amarillo / rojo); cuatro bloques de notas con formato
+  (objetivo, qué se habló, decisiones y riesgos), pendientes con responsable, prioridad y
+  fecha, y las reuniones anteriores de la misma marca o con la misma gente.
+- **Semáforo** — cada minuta lleva un clima: *verde* salió en orden, *amarillo* hay temas
+  para seguir de cerca, *rojo* se complicó. Se edita a mano en el detalle y, al importar un
+  resumen, se **deduce** de los riesgos y de lo hablado (o se toma de una línea `Clima:` si
+  Claude la manda). Pinta el borde de la fila en la lista, tiene filtro propio y un KPI de
+  "reuniones complicadas".
 - **Pendientes** — todo lo que quedó abierto en cualquier reunión, filtrable por estado,
   responsable y marca, con link a la minuta de origen.
 - **Personas y marcas** — cuántas reuniones tuviste con cada uno, cuándo fue la última y
@@ -70,8 +76,10 @@ numerados (`3. Pendientes`), y reconoce estas secciones con sus sinónimos:
 | Pendientes | pendientes, tareas, acciones, action items, compromisos |
 
 Las claves del encabezado son `Título`, `Fecha`, `Hora`, `Tipo`, `Marca` (o cuenta/cliente),
-`Participantes`, `Etiquetas` y `Próxima reunión`, y pueden venir de a dos por renglón
-separadas por `·`. Varias reuniones en un mismo texto se separan con una línea de `---`.
+`Participantes`, `Etiquetas`, `Clima` (verde/amarillo/rojo, con sinónimos como
+bien/regular/complicada) y `Próxima reunión`, y pueden venir de a dos por renglón separadas
+por `·`. Si no viene `Clima:`, se deduce de los riesgos y lo hablado. Varias reuniones en un
+mismo texto se separan con una línea de `---`.
 
 Cuando un encabezado cae en un campo que ya tenía contenido —"Feedback" después de "Temas
 tratados"— se conserva como subtítulo en negrita en vez de fundir las dos listas. Dentro de
