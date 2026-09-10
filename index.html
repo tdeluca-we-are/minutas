@@ -256,6 +256,13 @@ input[type=date].inp,input[type=time].inp{color-scheme:dark}
   color:var(--text2);outline:none;flex:none;width:130px}
 .pnd .fch:focus{border-color:var(--orange)}
 .pnd.venc .fch{border-color:rgba(239,68,68,.5);color:#ff8f8f}
+.prio{flex:none;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;
+  border-radius:20px;cursor:pointer;min-width:52px;border:1px solid var(--border2);background:rgba(255,255,255,.05);color:var(--text2)}
+.prio.alta{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4);color:#ef6b6b}
+.prio.media{background:rgba(245,158,11,.13);border-color:rgba(245,158,11,.38);color:#f5b73f}
+.prio.baja{background:rgba(255,255,255,.05);color:var(--text3)}
+.prio.vacia{border-style:dashed;background:none;color:var(--text3);opacity:.5;font-weight:600;text-transform:none;letter-spacing:0}
+.pnd:hover .prio.vacia{opacity:1}
 .pnd .del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:2px 5px}
 .pnd .del:hover{color:var(--red)}
 .pnd-src{font-size:11px;color:var(--text3);flex-basis:100%;padding-left:29px;margin-top:-2px}
@@ -463,6 +470,8 @@ const TIPOS = [
   {k:'otro',     n:'Otro'}
 ];
 const nombreTipo = k => (TIPOS.find(t=>t.k===k)||{n:'Otro'}).n;
+// El primero es "sin prioridad": el ciclo del botón vuelve ahí después de baja.
+const PRIOS = ['', 'alta', 'media', 'baja'];
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const MES3  = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const DOW   = ['dom','lun','mar','mié','jue','vie','sáb'];
@@ -474,7 +483,7 @@ let tab = 'minutas';
 let abierta = null;              // id de la minuta que se está viendo en detalle
 let volverA = 'minutas';         // a qué solapa vuelve el botón "atrás" del detalle
 let fTipo = 'todos', fMarca = 'todas', fPersona = 'todas', fDesde = '', fHasta = '', qLista = '';
-let fPend = 'pend', fPendResp = 'todos', fPendMarca = 'todas';
+let fPend = 'pend', fPendResp = 'todos', fPendMarca = 'todas', fPendPrio = 'todas';
 let gVista = 'personas';         // solapa Gente: personas | marcas
 let gSel = null;                 // persona o marca seleccionada
 let relOpen = true;
@@ -523,7 +532,8 @@ function normMinuta(m){
     if(typeof p === 'string') p = {texto:p};
     p = p || {};
     return {id:p.id || uid(), texto:p.texto || '', resp:p.resp || '',
-            fecha:normFecha(p.fecha) || '', hecho:!!p.hecho};
+            fecha:normFecha(p.fecha) || '', hecho:!!p.hecho,
+            prio:PRIOS.indexOf(String(p.prio||'').toLowerCase()) > 0 ? String(p.prio).toLowerCase() : ''};
   });
   return m;
 }
@@ -542,6 +552,11 @@ function normFecha(v){
   if(m) return m[1]+'-'+p2(m[2])+'-'+p2(m[3]);
   m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if(m){ let a = m[3]; if(a.length === 2) a = '20'+a; return a+'-'+p2(m[2])+'-'+p2(m[1]); }
+  // "12/09" sin año hay que resolverlo acá: si cae en el new Date() de abajo,
+  // JS lo lee como mes/día y devuelve el 9 de diciembre. Solo falla con días
+  // menores a 13, que es justo cuando el error no se ve.
+  m = s.match(/^(\d{1,2})[\/-](\d{1,2})$/);
+  if(m) return (new Date().getFullYear())+'-'+p2(m[2])+'-'+p2(m[1]);
   const d = new Date(s);
   return isNaN(d) ? '' : isoDate(d);
 }
@@ -1073,12 +1088,20 @@ function paneDetalle(){
   return bar + cab + cuerpo + pend + relacionadas(m) + datalists();
 }
 
+function ciclarPrio(mid, pid){
+  const m = M(mid); if(!m) return;
+  const p = m.pendientes.find(x=>x.id === pid); if(!p) return;
+  p.prio = PRIOS[(PRIOS.indexOf(p.prio||'') + 1) % PRIOS.length];
+  tocar(m); saveNow(); render();
+}
 function filaPend(m, p, conOrigen){
   const a = jsArg(m.id), b = jsArg(p.id);
   return '<div class="pnd'+(p.hecho?' hecho':'')+(vencido(p)?' venc':'')+'">'+
     '<input type="checkbox" class="chk" '+(p.hecho?'checked':'')+' onchange="togglePend('+a+','+b+')">'+
     '<input class="tx" data-k="ptx-'+p.id+'" value="'+esc(p.texto)+'" placeholder="Qué hay que hacer…" '+
       'oninput="setPend('+a+','+b+',\'texto\',this.value)">'+
+    '<button class="prio '+(p.prio || 'vacia')+' no-print" onclick="ciclarPrio('+a+','+b+')" '+
+      'title="Prioridad — click para cambiar">'+(p.prio || 'prio')+'</button>'+
     '<input class="resp" data-k="prs-'+p.id+'" list="dl-resp" value="'+esc(p.resp)+'" placeholder="Quién" '+
       'oninput="setPend('+a+','+b+',\'resp\',this.value)" onchange="setPend('+a+','+b+',\'resp\',this.value)">'+
     '<input class="fch" type="date" value="'+esc(p.fecha)+'" title="Para cuándo" '+
@@ -1142,6 +1165,7 @@ function panePendientes(){
     if(fPend === 'hechos' && !f.p.hecho) return false;
     if(fPendResp !== 'todos' && (f.p.resp||'') !== fPendResp) return false;
     if(fPendMarca !== 'todas' && (f.m.marca||'') !== fPendMarca) return false;
+    if(fPendPrio !== 'todas' && (f.p.prio||'') !== fPendPrio) return false;
     return true;
   });
   // los que tienen fecha primero y por fecha; los sin fecha, al final por reunión
@@ -1168,6 +1192,10 @@ function panePendientes(){
       '<span class="flt-lbl">Marca</span>'+
       '<select class="inp" onchange="fPendMarca=this.value;render()">'+
         opt(fPendMarca,'todas','Todas')+marcas().map(x=>opt(fPendMarca,x,x)).join('')+'</select>'+
+      '<span class="flt-lbl">Prioridad</span>'+
+      '<select class="inp" onchange="fPendPrio=this.value;render()">'+
+        opt(fPendPrio,'todas','Cualquiera')+opt(fPendPrio,'alta','Alta')+opt(fPendPrio,'media','Media')+
+        opt(fPendPrio,'baja','Baja')+opt(fPendPrio,'','Sin prioridad')+'</select>'+
     '</div>'+
     '<div class="section-body">'+
       (filas.length ? filas.map(f=>filaPend(f.m, f.p, true)).join('')
@@ -1428,7 +1456,7 @@ function previewHTML(lista){
         (m.proxima ? '<div class="ip-l"><b>Próxima:</b> '+esc(fechaLarga(m.proxima))+'</div>' : '')+
         (m.pendientes.length
           ? '<div class="ip-p"><b>'+m.pendientes.length+' pendiente(s):</b>'+
-            m.pendientes.map(p=>'<div>· '+esc(p.texto)+(p.resp?' — <b>'+esc(p.resp)+'</b>':'')+
+            m.pendientes.map(p=>'<div>· '+esc(p.texto)+(p.prio?' <span class="prio '+p.prio+'">'+p.prio+'</span>':'')+(p.resp?' — <b>'+esc(p.resp)+'</b>':'')+
               (p.fecha?' — '+esc(fechaLarga(p.fecha)):'')+(p.hecho?' <i>(hecho)</i>':'')+'</div>').join('')+'</div>'
           : '<div class="ip-l muted">sin pendientes detectados</div>')+
       '</div>';
@@ -1443,15 +1471,22 @@ function previewHTML(lista){
 // una vocal acentuada — "QUÉ SE HABLÓ" no matcheaba. Por eso el corte se hace
 // con un lookahead de "no sigue letra".
 const FIN = '(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])';
+// Los nombres de sección son los que usa Claude al resumir, con sus sinónimos y
+// sus subtítulos: "Temas tratados", "Requerimientos y feedback del cliente",
+// "Pedidos directos", "Alertas de alcance", "Riesgos y visión estratégica".
 const SECCIONES = [
   {campo:'objetivo',   rx:new RegExp('^(objetivo|contexto|para qu[eé] (era|fue)|motivo)'+FIN,'i')},
-  {campo:'notas',      rx:new RegExp('^(qu[eé] se habl[oó]|temas|notas|resumen|desarrollo|puntos|discusi[oó]n|lo hablado)'+FIN,'i')},
+  {campo:'notas',      rx:new RegExp('^(qu[eé] se habl[oó]|temas|notas|resumen|desarrollo|puntos|discusi[oó]n|lo hablado|requerimientos|pedidos|feedback|planteos)'+FIN,'i')},
   {campo:'decisiones', rx:new RegExp('^(decisiones|definiciones|acuerdos|lo que se defini[oó]|conclusiones)'+FIN,'i')},
-  {campo:'riesgos',    rx:new RegExp('^(riesgos( y alertas)?|alertas|se[ñn]ales|atenci[oó]n|para tener en cuenta)'+FIN,'i')},
-  {campo:'pendientes', rx:new RegExp('^(pendientes|tareas|acciones|pr[oó]ximos pasos|action items|to-?dos?|compromisos)'+FIN,'i')}
+  {campo:'riesgos',    rx:new RegExp('^(riesgos|alertas|se[ñn]ales|atenci[oó]n|para tener en cuenta|dependencias)'+FIN,'i')},
+  {campo:'pendientes', rx:new RegExp('^(pendientes|tareas|acciones|action items|to-?dos?|compromisos)'+FIN,'i')},
+  // "Próximos pasos" es ambiguo: a veces son las tareas, a veces el cierre
+  // narrativo de un resumen que ya trae su propia sección de pendientes. Se
+  // decide al final, cuando ya se sabe si hubo pendientes.
+  {campo:'_pasos',     rx:new RegExp('^(pr[oó]ximos pasos|siguientes pasos|c[oó]mo seguimos)'+FIN,'i')}
 ];
 const CLAVES = [
-  {campo:'titulo',        rx:/^(t[ií]tulo|reuni[oó]n|meeting|tema)$/i},
+  {campo:'titulo',        rx:/^(t[ií]tulo|reuni[oó]n|meeting)$/i},
   {campo:'fecha',         rx:/^(fecha|d[ií]a)$/i},
   {campo:'hora',          rx:/^(hora|horario)$/i},
   {campo:'tipo',          rx:/^(tipo|tipo de reuni[oó]n)$/i},
@@ -1461,10 +1496,25 @@ const CLAVES = [
   {campo:'proxima',       rx:/^(pr[oó]xima|pr[oó]xima reuni[oó]n|siguiente reuni[oó]n)$/i},
   {campo:'tactiqUrl',     rx:/^(tactiq|link|url|grabaci[oó]n)$/i}
 ];
-// Deja la línea desnuda: sin ##, sin **, sin dos puntos al final.
+const RX_KV = /^\s*[*-]?\s*\**([A-Za-zÁÉÍÓÚÜÑáéíóúüñ /]{2,28})\**\s*:\s*(.*)$/;
+const CLAVES_EN_SECCION = ['proxima','tactiqUrl'];
+// Quita los paréntesis solo si envuelven todo: "(Marisa)" sí, "Cliente (Marisa)" no.
+function sinParen(s){ const m = String(s).trim().match(/^\((.*)\)$/); return (m ? m[1] : s).trim(); }
+// Deja la línea desnuda para poder reconocerla: sin ##, sin **, sin numeración
+// de sección ("3. Pendientes") y sin dos puntos al final.
 function limpiaLinea(l){
-  return l.replace(/^\s*#{1,6}\s*/,'').replace(/^\s*\*\*(.+?)\*\*\s*:?\s*$/,'$1')
+  return l.replace(/^\s*#{1,6}\s*/,'').replace(/^\s*\d+[.)]\s+/,'')
+          .replace(/^\s*\*\*(.+?)\*\*\s*:?\s*$/,'$1')
           .replace(/\*\*/g,'').replace(/\s*:\s*$/,'').trim();
+}
+// "Fecha: 2026-09-10 · Hora: 15:04" son dos claves en un renglón. Solo se parte
+// si cada trozo posterior es una clave conocida, para no cortar texto que use "·".
+function partirClaves(linea){
+  if(linea.indexOf('·') < 0) return [linea];
+  const trozos = linea.split('·').map(x=>x.trim()).filter(Boolean);
+  if(trozos.length < 2) return [linea];
+  const esClave = t => { const kv = t.match(RX_KV); return !!(kv && CLAVES.some(c => c.rx.test(kv[1].trim()))); };
+  return trozos.slice(1).every(esClave) ? trozos : [linea];
 }
 function parseTexto(txt){
   return txt.split(/^\s*(?:-{3,}|={3,}|_{3,})\s*$/m)
@@ -1472,30 +1522,47 @@ function parseTexto(txt){
     .filter(Boolean);
 }
 function parseBloque(bloque){
-  const lineas = bloque.split(/\r?\n/);
   const m = {tipo:'', participantes:[], tags:[], pendientes:[]};
-  const buf = {objetivo:[], notas:[], decisiones:[], riesgos:[], pendientes:[]};
+  const buf = {objetivo:[], notas:[], decisiones:[], riesgos:[], pendientes:[], _pasos:[]};
   let sec = null, vistoAlgo = false;
+
+  // el preámbulo puede traer dos claves por renglón separadas por "·"
+  const lineas = [];
+  let enCuerpo = false;
+  bloque.split(/\r?\n/).forEach(l=>{
+    const limpia = limpiaLinea(l.replace(/\s+$/,''));
+    if(limpia && SECCIONES.some(x => x.rx.test(limpia)) && limpia.length < 70) enCuerpo = true;
+    if(enCuerpo) lineas.push(l); else partirClaves(l).forEach(x => lineas.push(x));
+  });
 
   lineas.forEach(cruda=>{
     const linea = cruda.replace(/\s+$/,'');
     const limpia = limpiaLinea(linea);
 
-    // ¿arranca una sección?
+    // ¿arranca una sección? Puede ser un subtítulo del mismo campo que ya venía
+    // ("Feedback" dentro de lo hablado): en ese caso se conserva como subtítulo
+    // para no fundir dos listas distintas en una sola.
     const s = limpia && SECCIONES.find(x => x.rx.test(limpia));
-    if(s && limpia.length < 60){ sec = s.campo; vistoAlgo = true; return; }
+    if(s && limpia.length < 70){
+      if(buf[s.campo].length && s.campo !== 'pendientes') buf[s.campo].push({sub:limpia});
+      sec = s.campo; vistoAlgo = true; return;
+    }
 
     // ¿es "clave: valor"? Las claves son específicas, así que valen en cualquier
-    // parte del texto: "Próxima reunión: 15/09" suele venir después de PENDIENTES
-    // y no es un pendiente. El título es la excepción: solo en el preámbulo.
-    const kv = linea.match(/^\s*[*-]?\s*\**([A-Za-zÁÉÍÓÚÜÑáéíóúüñ /]{2,28})\**\s*:\s*(.*)$/);
+    // parte del texto: "Próxima reunión: 15/09" suele venir después de los
+    // pendientes y no es un pendiente. El título es la excepción: solo arriba.
+    const kv = linea.match(RX_KV);
     if(kv){
       const k = CLAVES.find(x => x.rx.test(kv[1].trim()));
-      if(k && !(k.campo === 'titulo' && sec)){
+      // Dentro de una sección casi ninguna clave es confiable: en "Cliente: mandar
+      // las imágenes" la palabra Cliente no nombra la marca, encabeza una viñeta.
+      // Solo sobreviven las inequívocas, y nunca en viñeta.
+      const vale = !sec || (CLAVES_EN_SECCION.indexOf(k && k.campo) >= 0 && !/^\s*[-*•·]\s/.test(linea));
+      if(k && vale && !(k.campo === 'titulo' && sec)){
         // en "**Participantes:** Tomás" los asteriscos de cierre caen del lado del valor
         const v = kv[2].replace(/^\*+|\*+$/g,'').trim();
         if(k.campo === 'participantes' || k.campo === 'tags'){
-          m[k.campo] = v.split(/[,;·|]+/).map(x=>x.replace(/^y\s+/i,'').trim()).filter(Boolean);
+          m[k.campo] = v.split(/[,;|]+/).map(x=>x.replace(/^y\s+/i,'').trim()).filter(Boolean);
         } else if(k.campo === 'fecha' || k.campo === 'proxima'){
           m[k.campo] = normFecha(v) || fechaSuelta(v);
         } else m[k.campo] = v;
@@ -1504,22 +1571,34 @@ function parseBloque(bloque){
       }
     }
 
-    if(sec){ buf[sec].push(linea); return; }
+    if(sec){
+      // dentro de pendientes solo cuentan las viñetas: "Tarea de Tomás" y "Resto"
+      // son rótulos del resumen, no tareas
+      if(sec === 'pendientes' && !/^\s*(?:[-*•·]|\d+[.)])\s+/.test(linea)) return;
+      buf[sec].push({l:linea});
+      return;
+    }
 
     // Preámbulo sin clave: la primera línea con texto es el título
     if(!m.titulo && limpia && limpia.length > 2){ m.titulo = limpia; vistoAlgo = true; return; }
-    if(limpia) buf.notas.push(linea);
+    if(limpia) buf.notas.push({l:linea});
   });
 
   if(!vistoAlgo) return null;
+
+  if(!m.fecha) m.fecha = hoyISO();
+  // "Próximos pasos": tareas si el resumen no traía pendientes, cierre si ya los traía
+  if(buf._pasos.length){
+    if(buf.pendientes.length) buf.notas.push({sub:'Próximos pasos'}, ...buf._pasos);
+    else buf.pendientes = buf._pasos;
+  }
 
   m.objetivo   = aHtml(buf.objetivo);
   m.notas      = aHtml(buf.notas);
   m.decisiones = aHtml(buf.decisiones);
   m.riesgos    = aHtml(buf.riesgos);
-  m.pendientes = buf.pendientes.map(parsePendiente).filter(p=>p && p.texto);
+  m.pendientes = buf.pendientes.map(x => parsePendiente(x.l, m.fecha)).filter(p => p && p.texto);
 
-  if(!m.fecha) m.fecha = hoyISO();
   m.tipo = tipoDesde(m.tipo, m.titulo, m.marca);
   // fechas de pendiente sin año: caen en el año de la reunión
   m.pendientes.forEach(p=>{ if(p._sinAnio) p.fecha = conAnio(p.fecha, m.fecha); delete p._sinAnio; });
@@ -1527,50 +1606,83 @@ function parseBloque(bloque){
   return m;
 }
 // Las viñetas se guardan como lista de verdad; el resto, con saltos de línea.
-function aHtml(lineas){
-  const L = lineas.slice();
-  while(L.length && !L[0].trim()) L.shift();
-  while(L.length && !L[L.length-1].trim()) L.pop();
+// Los {sub:…} son los subtítulos que traía el resumen y van en negrita.
+function aHtml(items){
+  const L = items.slice();
+  while(L.length && L[0].l !== undefined && !L[0].l.trim()) L.shift();
+  while(L.length && L[L.length-1].l !== undefined && !L[L.length-1].l.trim()) L.pop();
   if(!L.length) return '';
+  const limpio = s => esc(String(s).replace(/`/g,'').trim());   // los `[En curso]` vienen con backticks
   let out = '', ul = false;
-  L.forEach(l=>{
-    const vi = l.match(/^\s*[-*•·]\s+(.*)$/);
+  const cerrar = () => { if(ul){ out += '</ul>'; ul = false; } };
+  L.forEach(it=>{
+    if(it.sub !== undefined){ cerrar(); out += '<b>'+limpio(it.sub)+'</b><br>'; return; }
+    const l = it.l;
+    const vi = l.match(/^\s*[-*•·]\s+(.*)$/) || l.match(/^\s*\d+[.)]\s+(.*)$/);
     if(vi){
       if(!ul){ out += '<ul>'; ul = true; }
-      out += '<li>'+esc(vi[1].trim())+'</li>';
+      out += '<li>'+limpio(vi[1])+'</li>';
     } else {
-      if(ul){ out += '</ul>'; ul = false; }
-      if(l.trim()) out += esc(l.trim())+'<br>';
+      cerrar();
+      if(l.trim()) out += limpio(l)+'<br>';
     }
   });
-  if(ul) out += '</ul>';
+  cerrar();
   return out.replace(/(<br>)+$/,'');
 }
 const RX_FECHA = /(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?)/;
-function parsePendiente(linea){
-  let t = linea.replace(/^\s*[-*•·]\s*/,'').replace(/^\s*\d+[.)]\s*/,'').trim();
+const RX_PRIO = /^(alta|media|baja|urgente|cr[ií]tica)$/i;
+const DIAS_SEM = ['domingo','lunes','martes','mi[eé]rcoles','jueves','viernes','s[aá]bado'];
+const RX_DIA = new RegExp('^(hoy|ma[ñn]ana|pasado ma[ñn]ana|(el |este |pr[oó]ximo )?('+DIAS_SEM.join('|')+'))$','i');
+// "hoy", "mañana" o un día de la semana, contados desde la fecha de la reunión.
+function fechaPalabra(p, refIso){
+  const base = refIso ? parseISO(refIso) : new Date();
+  const t = p.toLowerCase().replace(/^(el|este|pr[oó]ximo)\s+/,'').trim();
+  if(t === 'hoy') return isoDate(base);
+  if(/^ma[ñn]ana$/.test(t)) return isoDate(addDias(base,1));
+  if(/^pasado ma[ñn]ana$/.test(t)) return isoDate(addDias(base,2));
+  const i = DIAS_SEM.findIndex(d => new RegExp('^'+d+'$','i').test(t));
+  if(i < 0) return '';
+  let delta = (i - base.getDay() + 7) % 7;
+  if(delta === 0) delta = 7;                       // "el lunes" dicho un lunes es el que viene
+  return isoDate(addDias(base, delta));
+}
+function addDias(d,n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+/* Un pendiente puede venir con varios campos separados por guiones largos:
+     Crear campaña — primero Meta y después Search — Malena — Alta — 15/09
+   Se leen de derecha a izquierda, que es donde viven los metadatos, y lo que
+   sobra vuelve al texto: perder la descripción sería peor que un texto largo. */
+function parsePendiente(linea, refIso){
+  let t = String(linea).replace(/^\s*[-*•·]\s*/,'').replace(/^\s*\d+[.)]\s*/,'').replace(/`/g,'').trim();
   if(!t) return null;
-  let hecho = false;
+  let hecho = false, prio = '', resp = '', fecha = '', sinAnio = false;
   const chk = t.match(/^\[([ xX✓])\]\s*(.*)$/);
   if(chk){ hecho = /[xX✓]/.test(chk[1]); t = chk[2].trim(); }
 
-  let resp = '', fecha = '', sinAnio = false;
-  // "@Peny" o "(Peny)" al final identifican al responsable sin ambigüedad
+  // "@Peny" identifica al responsable sin ambigüedad, esté donde esté
   const arroba = t.match(/@([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][\wÁÉÍÓÚÜÑáéíóúüñ .'-]{1,28})/);
   if(arroba){ resp = arroba[1].trim(); t = t.replace(arroba[0],'').trim(); }
 
-  // el resto se parte por —, –, | o " - "
-  const partes = t.split(/\s+[—–|]\s+|\s+-\s+/).map(x=>x.trim()).filter(Boolean);
-  t = partes.shift() || '';
-  partes.forEach(p=>{
-    const f = p.match(RX_FECHA);
-    if(f && !fecha){
-      fecha = normFecha(f[1]) || fechaSuelta(f[1]);
-      if(/^\d{1,2}[\/-]\d{1,2}$/.test(f[1])) sinAnio = true;
-      const resto = p.replace(f[0],'').replace(/\b(para el|para|antes del|vence|fecha)\b/gi,'').replace(/[():,]/g,'').trim();
-      if(resto && !resp) resp = resto;
-    } else if(!resp) resp = p.replace(/[()]/g,'').trim();
-  });
+  const partes = t.split(/\s+[—–|]\s+|\s+-\s+/).map(x=>x.trim().replace(/[.;,]+$/,'')).filter(Boolean);
+  // un nombre es corto y no es una frase: así se distingue "Malena" de la descripción
+  const esNombre = p => p.length <= 40 && p.split(/\s+/).length <= 5 && !/[.;]/.test(p);
+  for(let i = partes.length - 1; i >= 1; i--){
+    const p = partes[i];
+    if(!fecha){
+      const f = p.match(RX_FECHA);
+      const resto = f ? p.replace(f[0],'').replace(/\b(para el|para|antes del|antes|vence|el|día)\b/gi,'').replace(/[():,]/g,'').trim() : '';
+      if(f && resto.length < 3){
+        fecha = normFecha(f[1]) || fechaSuelta(f[1]);
+        if(/^\d{1,2}[\/-]\d{1,2}$/.test(f[1])) sinAnio = true;
+        partes.splice(i,1); continue;
+      }
+      if(RX_DIA.test(p)){ const d = fechaPalabra(p, refIso); if(d){ fecha = d; partes.splice(i,1); continue; } }
+    }
+    if(!prio && RX_PRIO.test(p)){ prio = p.toLowerCase(); partes.splice(i,1); continue; }
+    if(!resp && esNombre(p)){ resp = sinParen(p); partes.splice(i,1); continue; }
+  }
+  t = partes.join(' — ');
+
   // fecha pegada al final del texto, sin separador
   if(!fecha){
     const f = t.match(new RegExp('[(\\[]?\\s*'+RX_FECHA.source+'\\s*[)\\]]?\\s*$'));
@@ -1579,8 +1691,8 @@ function parsePendiente(linea){
            t = t.slice(0, f.index).trim(); }
   }
   const par = t.match(/\(([^)]{2,30})\)\s*$/);
-  if(par && !resp){ resp = par[1].trim(); t = t.slice(0, par.index).trim(); }
-  return {texto:t.replace(/[.,;]+$/,'').trim(), resp:resp, fecha:fecha, hecho:hecho, _sinAnio:sinAnio};
+  if(par && !resp && esNombre(par[1])){ resp = par[1].trim(); t = t.slice(0, par.index).trim(); }
+  return {texto:t.replace(/[.,;]+$/,'').trim(), resp:resp, fecha:fecha, hecho:hecho, prio:prio, _sinAnio:sinAnio};
 }
 // "15/09" sin año: lo completa la fecha de la reunión
 function fechaSuelta(v){
@@ -1681,7 +1793,7 @@ function reporteDe(m){
     L.push('PENDIENTES');
     m.pendientes.forEach(p=>{
       L.push('  ['+(p.hecho?'x':' ')+'] '+(p.texto||'—')+
-        (p.resp?' — '+p.resp:'')+(p.fecha?' — para el '+fechaLarga(p.fecha):''));
+        (p.prio?' — prioridad '+p.prio:'')+(p.resp?' — '+p.resp:'')+(p.fecha?' — para el '+fechaLarga(p.fecha):''));
     });
     L.push('');
   }

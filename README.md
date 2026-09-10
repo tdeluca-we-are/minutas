@@ -57,17 +57,39 @@ El flujo pensado es: el resumen lo arma Claude en un chat normal, y se pega en e
 El prompt y el parser viven en el mismo archivo a propósito: si cambia el formato del
 resumen, se cambian los dos juntos.
 
-El parser es tolerante — acepta encabezados en mayúscula o minúscula, con `##`, con `**` o
-con dos puntos, y reconoce estas secciones (con sinónimos): **Objetivo** (contexto, motivo),
-**Qué se habló** (temas, notas, resumen), **Decisiones** (acuerdos, definiciones),
-**Riesgos** (alertas), **Pendientes** (tareas, próximos pasos, action items). Las claves del
-encabezado son `Título`, `Fecha`, `Hora`, `Tipo`, `Marca` (o cuenta/cliente),
-`Participantes`, `Etiquetas` y `Próxima reunión`. Varias reuniones en un mismo texto se
-separan con una línea de `---`.
+El parser es tolerante, porque el resumen sale distinto según cómo lo pidas. Acepta
+encabezados en mayúscula o minúscula, con `##`, con `**`, con dos puntos al final o
+numerados (`3. Pendientes`), y reconoce estas secciones con sus sinónimos:
 
-Cada pendiente se escribe `- [ ] qué hay que hacer — Responsable — DD/MM`. El responsable
-también se reconoce como `@Nombre` o `(Nombre)`, y una fecha sin año cae en el año de la
-reunión. Lo que no cae en ninguna sección va a *qué se habló*, así que nunca se pierde texto.
+| Campo | Encabezados que reconoce |
+|---|---|
+| Objetivo | objetivo, contexto, motivo |
+| Qué se habló | qué se habló, temas *(tratados)*, notas, resumen, desarrollo, puntos, discusión, requerimientos, pedidos *(directos)*, feedback, planteos |
+| Decisiones | decisiones *(y acuerdos)*, acuerdos, definiciones, conclusiones |
+| Riesgos | riesgos *(y visión estratégica)*, alertas *(de alcance)*, señales, dependencias |
+| Pendientes | pendientes, tareas, acciones, action items, compromisos |
+
+Las claves del encabezado son `Título`, `Fecha`, `Hora`, `Tipo`, `Marca` (o cuenta/cliente),
+`Participantes`, `Etiquetas` y `Próxima reunión`, y pueden venir de a dos por renglón
+separadas por `·`. Varias reuniones en un mismo texto se separan con una línea de `---`.
+
+Cuando un encabezado cae en un campo que ya tenía contenido —"Feedback" después de "Temas
+tratados"— se conserva como subtítulo en negrita en vez de fundir las dos listas. Dentro de
+*Pendientes* solo cuentan las viñetas, así que rótulos como "Tarea de Tomás" o "Resto" se
+descartan solos. **Próximos pasos** es ambiguo a propósito: si el resumen ya traía una
+sección de pendientes, se guarda como cierre en *qué se habló*; si no, son las tareas.
+
+Cada pendiente se lee de derecha a izquierda, que es donde viven los metadatos:
+
+```
+- [ ] Crear campaña — primero Meta y después Search — Malena — Alta — 15/09
+        texto           descripción (vuelve al texto)   resp   prioridad  fecha
+```
+
+El responsable también se reconoce como `@Nombre` o `(Nombre)`; la prioridad puede ser
+alta, media, baja, urgente o crítica; y la fecha acepta `DD/MM`, `DD/MM/AAAA`, `AAAA-MM-DD`
+o palabras (`hoy`, `mañana`, `el lunes`), siempre contadas desde la fecha de la reunión. Lo
+que no cae en ninguna sección va a *qué se habló*, así que nunca se pierde texto.
 
 Si el tipo no viene, se deduce del título y de si hay marca: "1 a 1" → 1 a 1, "kickoff" →
 comercial, con marca → cliente.
