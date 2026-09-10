@@ -236,6 +236,9 @@ input[type=date].inp,input[type=time].inp{color-scheme:dark}
 .bloque.dec .rich-body{background:rgba(240,78,35,.06);border-color:rgba(240,78,35,.24)}
 .bloque.dec .rich-body:focus{background:rgba(240,78,35,.1);border-color:var(--orange)}
 .bloque.dec .bloque-lbl{color:#f4795a}
+.bloque.rie .rich-body{background:rgba(245,158,11,.05);border-color:rgba(245,158,11,.22)}
+.bloque.rie .rich-body:focus{background:rgba(245,158,11,.09);border-color:var(--amber)}
+.bloque.rie .bloque-lbl{color:#f5b73f}
 .notas-grandes .rich-body{min-height:200px}
 
 /* ===== pendientes ===== */
@@ -307,6 +310,18 @@ tr.open-row td{background:rgba(240,78,35,.06)}
 .imp-area{width:100%;min-height:260px;font-family:var(--code);font-size:12px;line-height:1.6;background:var(--bg2);
   color:var(--text);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 14px;outline:none;resize:vertical}
 .imp-area:focus{border-color:var(--orange)}
+/* vista previa de lo interpretado: antes de guardar, mostrar qué se entendió */
+.imp-prev-hdr{font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px}
+.ip{background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--orange);
+  border-radius:var(--radius);padding:12px 14px;margin-bottom:10px}
+.ip-t{font-size:14px;font-weight:700;letter-spacing:-.01em}
+.ip-m{font-size:11px;color:var(--text3);margin:3px 0 8px}
+.ip-l{font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:3px}
+.ip-l b{color:var(--text3);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.ip-p{font-size:12px;color:var(--text2);line-height:1.6;margin-top:7px;padding-top:7px;border-top:1px solid var(--border2)}
+.ip-p b{color:var(--text3);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.ip-p div b{color:var(--text);font-size:12px;text-transform:none;letter-spacing:0}
+.ip-p i{color:var(--green);font-style:normal;font-size:11px}
 
 /* resultados del buscador */
 .bus-i{padding:11px 13px;border:1px solid var(--border2);border-radius:var(--radius);margin-bottom:8px;cursor:pointer;background:var(--bg2)}
@@ -402,19 +417,22 @@ mark{background:rgba(240,78,35,.28);color:#fff;border-radius:3px;padding:0 2px}
 <div class="modal" id="modal-imp" onclick="if(event.target===this)cerrarModal('modal-imp')">
   <div class="modal-card">
     <div class="modal-hdr">
-      <div><h3>Pegar minutas</h3><div class="sub">JSON generado por Claude desde Tactiq, o un respaldo exportado</div></div>
+      <div><h3>Pegar una reunión</h3><div class="sub">El resumen que te armó Claude, tal cual — o un JSON / respaldo</div></div>
       <div class="modal-acts">
-        <button class="btn-orange" onclick="pegarMinutas()">Importar</button>
+        <button class="btn-orange" id="imp-btn" onclick="pegarMinutas()">Importar</button>
         <button class="modal-close" onclick="cerrarModal('modal-imp')" title="Cerrar">&times;</button>
       </div>
     </div>
     <div class="modal-body">
-      <div class="hint" style="margin-bottom:10px">
-        Acepta <b>{"minutas":[…]}</b> o directamente una lista <b>[…]</b>. Cada minuta necesita al menos
-        <b>titulo</b> y <b>fecha</b> (AAAA-MM-DD). Si ya existe una con el mismo <b>tactiqId</b>, se actualiza en vez de duplicarse.
+      <div class="hint" style="margin-bottom:10px;line-height:1.7">
+        Pegá el resumen del chat tal cual: entiende el título, <b>Fecha:</b>, <b>Participantes:</b>, <b>Marca:</b> y las
+        secciones <b>Objetivo</b>, <b>Qué se habló</b>, <b>Decisiones</b>, <b>Riesgos</b> y <b>Pendientes</b>.
+        Antes de guardar te muestro qué entendió. Para varias reuniones de una, separalas con una línea de <b>---</b>.
+        <br>También acepta JSON (<b>{"minutas":[…]}</b>) y respaldos exportados; con el mismo <b>tactiqId</b> actualiza en vez de duplicar.
       </div>
-      <textarea class="imp-area" id="imp-txt" spellcheck="false" placeholder='{"minutas":[{"titulo":"...","fecha":"2026-09-10","participantes":["..."],"notas":"...","decisiones":"...","pendientes":[{"texto":"...","resp":"..."}]}]}'></textarea>
+      <textarea class="imp-area" id="imp-txt" spellcheck="false" oninput="impCambio()" placeholder="Weekly O'Higgins — performance de email&#10;Fecha: 2026-09-08&#10;Hora: 10:30&#10;Marca: O'Higgins&#10;Participantes: Tomás, Peny, Laura (cliente)&#10;&#10;OBJETIVO&#10;Revisar agosto y cerrar el plan de septiembre.&#10;&#10;QUÉ SE HABLÓ&#10;- Agosto cerró 12% arriba en revenue de email.&#10;- La reactivación rindió mejor de lo esperado.&#10;&#10;DECISIONES&#10;Se suma un envío semanal más a partir del 15.&#10;&#10;RIESGOS&#10;- Laura mencionó que el equipo de diseño está desbordado.&#10;&#10;PENDIENTES&#10;- [ ] Armar calendario de septiembre — Peny — 15/09&#10;- [x] Pasar creativos — Laura&#10;&#10;Próxima reunión: 15/09/2026"></textarea>
       <div class="auth-err" id="imp-err" style="text-align:left"></div>
+      <div id="imp-prev"></div>
     </div>
   </div>
 </div>
@@ -494,6 +512,7 @@ function normMinuta(m){
   m.objetivo = m.objetivo || '';
   m.notas = m.notas || '';
   m.decisiones = m.decisiones || '';
+  m.riesgos = m.riesgos || '';
   m.proxima = normFecha(m.proxima) || '';
   m.fuente = m.fuente === 'tactiq' ? 'tactiq' : 'manual';
   m.tactiqId = m.tactiqId || '';
@@ -704,7 +723,7 @@ function responsables(){
 // Todo el texto de una minuta en una sola cadena: lo usan el buscador y los fragmentos.
 function textoDe(m){
   return [m.titulo, m.marca, m.participantes.join(' '), m.tags.join(' '),
-          toText(m.objetivo), toText(m.notas), toText(m.decisiones),
+          toText(m.objetivo), toText(m.notas), toText(m.decisiones), toText(m.riesgos),
           m.pendientes.map(p=>p.texto+' '+p.resp).join(' ')].join(' \n ');
 }
 const pendAbiertos = m => m.pendientes.filter(p=>!p.hecho).length;
@@ -1035,6 +1054,9 @@ function paneDetalle(){
     '<div class="bloque dec"><div class="bloque-lbl">Decisiones <span class="q">qué quedó definido</span></div>'+
       richBox('dec-'+m.id, m.decisiones, 'setCampo('+a+',\'decisiones\',richIn(this))',
         'Lo que se acordó, sin condicionales…', 80)+'</div>'+
+    '<div class="bloque rie"><div class="bloque-lbl">Riesgos y alertas <span class="q">lo que quedó picando</span></div>'+
+      richBox('rie-'+m.id, m.riesgos, 'setCampo('+a+',\'riesgos\',richIn(this))',
+        'Quejas, plazos ajustados, temas que pueden explotar…', 60)+'</div>'+
   '</div></div>';
 
   const pend = '<div class="section">'+
@@ -1204,6 +1226,61 @@ function paneGente(){
 }
 const ISO = 'data:image/png;base64,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UmVhZHlxyWU8AAADJWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDggNzkuMTY0MDM2LCAyMDE5LzA4LzEzLTAxOjA2OjU3ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdFJlZj0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlUmVmIyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgMjEuMCAoTWFjaW50b3NoKSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDoxMzI5NUREMEMyNTQxMUVCOTI2RUU2NUJCQzFDQUVCNiIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpDNzQxREEyMkMyNTQxMUVCOTI2RUU2NUJCQzFDQUVCNiI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJlZjppbnN0YW5jZUlEPSJ4bXAuaWlkOjEzMjk1RENFQzI1NDExRUI5MjZFRTY1QkJDMUNBRUI2IiBzdFJlZjpkb2N1bWVudElEPSJ4bXAuZGlkOjEzMjk1RENGQzI1NDExRUI5MjZFRTY1QkJDMUNBRUI2Ii8+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+lb+ViAAAILlJREFUeNrs3Xm4ZGV9J/C60003UEBDQ4MsNqsliAKCLLIoqw2yikC5JDM6IxqiMWxKBBM3AkYGNTok8Q+diBBTPoqjEmNmyGIkmsEMRiZOYkVmAB1hBAlbAYJw53e81eF2c/v2rbpVp877ns/neX7Pi3bVrVu/c6rO975nm5qenm4AAPCMf6MFAAACEgCAgAQAICABAAhIAAACEgCAgAQAICABAAhIAAACEgCAgAQAICABAAhIAAACEgCAgAQAICABAAhIAAACEgAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAQAISAAAAhIAAAISAICABAAgIAEACEgAAAISAICABAAgIAEACEgAAAISAICABAAgIAEACEgAAAISAICABAAgIAEACEgAAAISAAACEgCAgAQAICABAAhIAAACEgCAgAQAICABAAhIAAACEgCAgAQAICABAAhIAAACEgCAgAQAICABAAhIAAACEgAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAQAISAAAk7NUC/IxNTWlCQAVMz09rQkJMoMEACAgAQAISAAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAQAISAAAAhIAgIAEACAgAVRHr91aqgvApE1NT0/rQi4Lc2pKE0g5GK2I4ZNRu0ed0+x0b9cVcmA7myYzSEAVwtFBMdwa9eqoA6O+E//fa3QGmBQzSDktTDNIpBeMipX216M+FLXJHA/5RNT5zU73cd0iVbazAhICEgwSjraK4dNRZ2zkod+NOitC0g90DQGJstjFBkwiHO0dwy0LCEeF/aO+Hc85SeeAsphBymlhmkEijXB0WgzXRW054FOfjvrNqCubna4vLpJhOysgISDBfMGoWEHf06/F+ELUGyIkPaKrCEgISAhIpByONm/MzBq9akQ/sjgu6dQIST/UXQQkBCQEJFIMR8+J4StRLxnxj7476pQISbfqMgISo+YgbWCc4eiFMfz3MYSjwo5R3+gf0wQgIAFJhKM1MfxN1Ooxvkyx6+6L8Vq/ruPAKNnFltPCtIuN6oSj1zZmrnG0SYkve1XUJc5wo2psZ9NkBgkYdTh6ewx/VHI4Krwj6lPx+kssBUBAAqoUjt4fw+9O8Fd4Q9QN/bPmAIZmF1tOC9MuNiYXjIqV75qo8yryK32jMXMZgActHSbNdlZAQkCinuGo2KX1qah/W7FfrbiVySuEJAQkhmEXG7DYcHRtBcNR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';
 
+/* ---------- el prompt que va al chat ----------
+   Vive acá adentro para que el formato del resumen y el que entiende el
+   importador no se separen nunca: si cambia uno, se cambia el otro. */
+const PROMPT_RESUMEN = [
+  'Sos mi asistente para minutas de reuniones. Resumí la reunión que te paso y devolvémela',
+  'EXACTAMENTE con el formato de abajo: sin introducción, sin comentarios finales y sin',
+  'markdown más allá de las viñetas. Si un dato no está en la reunión, omití esa línea o esa',
+  'sección entera en vez de inventarla.',
+  '',
+  '<Título de la reunión>',
+  'Fecha: AAAA-MM-DD',
+  'Hora: HH:MM',
+  'Tipo: cliente | interna | 1 a 1 | comercial | otro',
+  'Marca: <la marca o cuenta, si aplica>',
+  'Participantes: <nombres separados por coma>',
+  'Etiquetas: <dos o tres palabras clave separadas por coma>',
+  '',
+  'OBJETIVO',
+  'Una o dos líneas: para qué era la reunión.',
+  '',
+  'QUÉ SE HABLÓ',
+  '- Viñetas con lo que importa: números concretos, planteos, quién dijo qué.',
+  '- Nada de relleno. Si hubo cifras o fechas, ponelas.',
+  '',
+  'DECISIONES',
+  '- Solo lo que quedó definido, en pasado y sin condicionales.',
+  '- Si no se cerró nada, escribí: No se cerró ninguna decisión.',
+  '',
+  'RIESGOS',
+  '- Lo que quedó picando: quejas, plazos ajustados, temas que pueden explotar.',
+  '- Si no hay ninguno, omití la sección entera.',
+  '',
+  'PENDIENTES',
+  '- [ ] Qué hay que hacer — Responsable — DD/MM',
+  '- [x] Lo que ya está hecho — Responsable',
+  '',
+  'Próxima reunión: DD/MM/AAAA',
+  '',
+  'Reglas: el responsable va siempre después de un guion largo (—), nunca entre paréntesis.',
+  'Las fechas de los pendientes van al final, después de otro guion largo. Si te paso varias',
+  'reuniones, separá cada una con una línea que tenga solo tres guiones (---).'
+].join('\n');
+
+function copiarPrompt(){
+  navigator.clipboard.writeText(PROMPT_RESUMEN)
+    .then(()=>toast('Prompt copiado — pegalo en el chat'), ()=>verPrompt());
+}
+function verPrompt(){
+  repTexto = PROMPT_RESUMEN; repNombre = 'prompt-minutas';
+  document.getElementById('rep-tit').textContent = 'Prompt para el chat';
+  document.getElementById('rep-sub').textContent = 'Pegalo en Claude junto con la reunión';
+  document.getElementById('rep-body').textContent = repTexto;
+  abrirModal('modal-rep');
+}
+
 /* ---------- render: config ---------- */
 function paneConfig(){
   const m = leerMeta();
@@ -1211,14 +1288,18 @@ function paneConfig(){
   const peso = Math.round(JSON.stringify(S).length/1024);
   return '<div class="two-col">'+
     '<div>'+
-      '<div class="section"><div class="section-hdr"><div class="section-title"><span class="dot"></span>Traer minutas de Tactiq</div></div>'+
+      '<div class="section"><div class="section-hdr"><div class="section-title"><span class="dot"></span>Cargar una reunión desde el chat</div></div>'+
       '<div class="section-body">'+
-        '<div class="hint" style="margin-bottom:12px;line-height:1.7">'+
-          'Pedile a Claude <b>"volcá al minutero la reunión de hoy con X"</b> y va a devolverte un bloque JSON.'+
-          ' Copialo, pegalo acá y queda cargado con participantes, lo hablado, decisiones y pendientes.'+
-          '<br>Si una minuta ya existe con el mismo <b>tactiqId</b>, se actualiza en lugar de duplicarse.'+
+        '<div class="hint" style="margin-bottom:12px;line-height:1.8">'+
+          '<b>1.</b> En un chat normal de Claude, pegá el prompt de abajo junto con la reunión (o pedile que la busque en Tactiq).<br>'+
+          '<b>2.</b> Copiá el resumen que te devuelve, tal cual.<br>'+
+          '<b>3.</b> Pegalo acá: te muestro qué entendí y recién ahí se guarda.'+
         '</div>'+
-        '<button class="btn-orange" onclick="abrirImportar()">Pegar minutas (JSON)</button>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          '<button class="btn-orange" onclick="abrirImportar()">Pegar una reunión</button>'+
+          '<button class="btn-sm" onclick="copiarPrompt()">Copiar el prompt para el chat</button>'+
+          '<button class="btn-sm" onclick="verPrompt()">Ver el prompt</button>'+
+        '</div>'+
       '</div></div>'+
 
       '<div class="section"><div class="section-hdr"><div class="section-title"><span class="dot"></span>Respaldo</div></div>'+
@@ -1292,16 +1373,239 @@ function importFile(input){
   r.onload = e => { aplicarImport(e.target.result, true); input.value = ''; };
   r.readAsText(f);
 }
+let impPrev = null;   // lo que se entendió del texto pegado, a la espera de confirmar
 function abrirImportar(){
+  impPrev = null;
   document.getElementById('imp-err').textContent = '';
   document.getElementById('imp-txt').value = '';
+  document.getElementById('imp-prev').innerHTML = '';
+  document.getElementById('imp-btn').textContent = 'Importar';
   abrirModal('modal-imp');
   setTimeout(()=>document.getElementById('imp-txt').focus(), 60);
 }
-function pegarMinutas(){
-  const ok = aplicarImport(document.getElementById('imp-txt').value, false);
-  if(ok) cerrarModal('modal-imp');
+// Si volvés a tocar el texto, lo que se había entendido deja de valer.
+function impCambio(){
+  if(!impPrev) return;
+  impPrev = null;
+  document.getElementById('imp-prev').innerHTML = '';
+  document.getElementById('imp-btn').textContent = 'Importar';
 }
+function pegarMinutas(){
+  if(impPrev){ aplicarLista(impPrev, false); cerrarModal('modal-imp'); return; }
+  const txt = document.getElementById('imp-txt').value.trim();
+  if(!txt){ document.getElementById('imp-err').textContent = 'Pegá algo primero.'; return; }
+  // JSON va derecho; cualquier otra cosa se interpreta como resumen escrito
+  if(txt[0] === '{' || txt[0] === '['){
+    if(aplicarImport(txt, false)) cerrarModal('modal-imp');
+    return;
+  }
+  const lista = parseTexto(txt);
+  if(!lista.length){
+    document.getElementById('imp-err').textContent =
+      'No pude reconocer ninguna reunión. Fijate que arriba de todo esté el título y una línea "Fecha: …".';
+    return;
+  }
+  impPrev = lista;
+  document.getElementById('imp-err').textContent = '';
+  document.getElementById('imp-prev').innerHTML = previewHTML(lista);
+  document.getElementById('imp-btn').textContent = 'Confirmar e importar';
+}
+function previewHTML(lista){
+  return '<div class="imp-prev-hdr">Esto es lo que entendí. Revisalo y confirmá.</div>'+
+    lista.map(x=>{
+      const m = normMinuta(JSON.parse(JSON.stringify(x)));
+      // toText ya marca las viñetas con "·"; sin esto, los saltos de línea sumaban un segundo punto
+      const plano = v => toText(v).replace(/\n+/g,' · ').replace(/(?:\s*·\s*){2,}/g,' · ').replace(/^\s*·\s*/,'');
+      const campo = (lbl, v) => v ? '<div class="ip-l"><b>'+lbl+':</b> '+esc(recorte(plano(v), 130))+'</div>' : '';
+      return '<div class="ip">'+
+        '<div class="ip-t">'+esc(m.titulo || '⚠ sin título')+'</div>'+
+        '<div class="ip-m">'+esc(fechaLarga(m.fecha))+(m.hora?' · '+esc(m.hora):'')+
+          ' · '+esc(nombreTipo(m.tipo))+(m.marca?' · '+esc(m.marca):'')+'</div>'+
+        (m.participantes.length ? '<div class="ip-l"><b>Participantes:</b> '+esc(m.participantes.join(', '))+'</div>' : '')+
+        (m.tags.length ? '<div class="ip-l"><b>Etiquetas:</b> '+esc(m.tags.join(', '))+'</div>' : '')+
+        campo('Objetivo', m.objetivo)+campo('Qué se habló', m.notas)+
+        campo('Decisiones', m.decisiones)+campo('Riesgos', m.riesgos)+
+        (m.proxima ? '<div class="ip-l"><b>Próxima:</b> '+esc(fechaLarga(m.proxima))+'</div>' : '')+
+        (m.pendientes.length
+          ? '<div class="ip-p"><b>'+m.pendientes.length+' pendiente(s):</b>'+
+            m.pendientes.map(p=>'<div>· '+esc(p.texto)+(p.resp?' — <b>'+esc(p.resp)+'</b>':'')+
+              (p.fecha?' — '+esc(fechaLarga(p.fecha)):'')+(p.hecho?' <i>(hecho)</i>':'')+'</div>').join('')+'</div>'
+          : '<div class="ip-l muted">sin pendientes detectados</div>')+
+      '</div>';
+    }).join('');
+}
+
+/* ---------- interpretar un resumen escrito ----------
+   Claude devuelve el resumen en texto, no en JSON, así que acá lo desarmamos.
+   La idea es ser tolerante: encabezados con o sin acentos, en mayúsculas, con
+   ##, con ** o con dos puntos al final; y varias reuniones separadas por ---. */
+// Ojo con \b: se define sobre [A-Za-z0-9_], así que NO cierra palabra después de
+// una vocal acentuada — "QUÉ SE HABLÓ" no matcheaba. Por eso el corte se hace
+// con un lookahead de "no sigue letra".
+const FIN = '(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])';
+const SECCIONES = [
+  {campo:'objetivo',   rx:new RegExp('^(objetivo|contexto|para qu[eé] (era|fue)|motivo)'+FIN,'i')},
+  {campo:'notas',      rx:new RegExp('^(qu[eé] se habl[oó]|temas|notas|resumen|desarrollo|puntos|discusi[oó]n|lo hablado)'+FIN,'i')},
+  {campo:'decisiones', rx:new RegExp('^(decisiones|definiciones|acuerdos|lo que se defini[oó]|conclusiones)'+FIN,'i')},
+  {campo:'riesgos',    rx:new RegExp('^(riesgos( y alertas)?|alertas|se[ñn]ales|atenci[oó]n|para tener en cuenta)'+FIN,'i')},
+  {campo:'pendientes', rx:new RegExp('^(pendientes|tareas|acciones|pr[oó]ximos pasos|action items|to-?dos?|compromisos)'+FIN,'i')}
+];
+const CLAVES = [
+  {campo:'titulo',        rx:/^(t[ií]tulo|reuni[oó]n|meeting|tema)$/i},
+  {campo:'fecha',         rx:/^(fecha|d[ií]a)$/i},
+  {campo:'hora',          rx:/^(hora|horario)$/i},
+  {campo:'tipo',          rx:/^(tipo|tipo de reuni[oó]n)$/i},
+  {campo:'marca',         rx:/^(marca|cuenta|cliente|marca\s*\/\s*cuenta)$/i},
+  {campo:'participantes', rx:/^(participantes|asistentes|presentes|quienes?|con)$/i},
+  {campo:'tags',          rx:/^(etiquetas|tags|temas clave)$/i},
+  {campo:'proxima',       rx:/^(pr[oó]xima|pr[oó]xima reuni[oó]n|siguiente reuni[oó]n)$/i},
+  {campo:'tactiqUrl',     rx:/^(tactiq|link|url|grabaci[oó]n)$/i}
+];
+// Deja la línea desnuda: sin ##, sin **, sin dos puntos al final.
+function limpiaLinea(l){
+  return l.replace(/^\s*#{1,6}\s*/,'').replace(/^\s*\*\*(.+?)\*\*\s*:?\s*$/,'$1')
+          .replace(/\*\*/g,'').replace(/\s*:\s*$/,'').trim();
+}
+function parseTexto(txt){
+  return txt.split(/^\s*(?:-{3,}|={3,}|_{3,})\s*$/m)
+    .map(b => parseBloque(b))
+    .filter(Boolean);
+}
+function parseBloque(bloque){
+  const lineas = bloque.split(/\r?\n/);
+  const m = {tipo:'', participantes:[], tags:[], pendientes:[]};
+  const buf = {objetivo:[], notas:[], decisiones:[], riesgos:[], pendientes:[]};
+  let sec = null, vistoAlgo = false;
+
+  lineas.forEach(cruda=>{
+    const linea = cruda.replace(/\s+$/,'');
+    const limpia = limpiaLinea(linea);
+
+    // ¿arranca una sección?
+    const s = limpia && SECCIONES.find(x => x.rx.test(limpia));
+    if(s && limpia.length < 60){ sec = s.campo; vistoAlgo = true; return; }
+
+    // ¿es "clave: valor"? Las claves son específicas, así que valen en cualquier
+    // parte del texto: "Próxima reunión: 15/09" suele venir después de PENDIENTES
+    // y no es un pendiente. El título es la excepción: solo en el preámbulo.
+    const kv = linea.match(/^\s*[*-]?\s*\**([A-Za-zÁÉÍÓÚÜÑáéíóúüñ /]{2,28})\**\s*:\s*(.*)$/);
+    if(kv){
+      const k = CLAVES.find(x => x.rx.test(kv[1].trim()));
+      if(k && !(k.campo === 'titulo' && sec)){
+        // en "**Participantes:** Tomás" los asteriscos de cierre caen del lado del valor
+        const v = kv[2].replace(/^\*+|\*+$/g,'').trim();
+        if(k.campo === 'participantes' || k.campo === 'tags'){
+          m[k.campo] = v.split(/[,;·|]+/).map(x=>x.replace(/^y\s+/i,'').trim()).filter(Boolean);
+        } else if(k.campo === 'fecha' || k.campo === 'proxima'){
+          m[k.campo] = normFecha(v) || fechaSuelta(v);
+        } else m[k.campo] = v;
+        vistoAlgo = true;
+        return;
+      }
+    }
+
+    if(sec){ buf[sec].push(linea); return; }
+
+    // Preámbulo sin clave: la primera línea con texto es el título
+    if(!m.titulo && limpia && limpia.length > 2){ m.titulo = limpia; vistoAlgo = true; return; }
+    if(limpia) buf.notas.push(linea);
+  });
+
+  if(!vistoAlgo) return null;
+
+  m.objetivo   = aHtml(buf.objetivo);
+  m.notas      = aHtml(buf.notas);
+  m.decisiones = aHtml(buf.decisiones);
+  m.riesgos    = aHtml(buf.riesgos);
+  m.pendientes = buf.pendientes.map(parsePendiente).filter(p=>p && p.texto);
+
+  if(!m.fecha) m.fecha = hoyISO();
+  m.tipo = tipoDesde(m.tipo, m.titulo, m.marca);
+  // fechas de pendiente sin año: caen en el año de la reunión
+  m.pendientes.forEach(p=>{ if(p._sinAnio) p.fecha = conAnio(p.fecha, m.fecha); delete p._sinAnio; });
+  if(!m.titulo && !toText(m.notas)) return null;
+  return m;
+}
+// Las viñetas se guardan como lista de verdad; el resto, con saltos de línea.
+function aHtml(lineas){
+  const L = lineas.slice();
+  while(L.length && !L[0].trim()) L.shift();
+  while(L.length && !L[L.length-1].trim()) L.pop();
+  if(!L.length) return '';
+  let out = '', ul = false;
+  L.forEach(l=>{
+    const vi = l.match(/^\s*[-*•·]\s+(.*)$/);
+    if(vi){
+      if(!ul){ out += '<ul>'; ul = true; }
+      out += '<li>'+esc(vi[1].trim())+'</li>';
+    } else {
+      if(ul){ out += '</ul>'; ul = false; }
+      if(l.trim()) out += esc(l.trim())+'<br>';
+    }
+  });
+  if(ul) out += '</ul>';
+  return out.replace(/(<br>)+$/,'');
+}
+const RX_FECHA = /(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?)/;
+function parsePendiente(linea){
+  let t = linea.replace(/^\s*[-*•·]\s*/,'').replace(/^\s*\d+[.)]\s*/,'').trim();
+  if(!t) return null;
+  let hecho = false;
+  const chk = t.match(/^\[([ xX✓])\]\s*(.*)$/);
+  if(chk){ hecho = /[xX✓]/.test(chk[1]); t = chk[2].trim(); }
+
+  let resp = '', fecha = '', sinAnio = false;
+  // "@Peny" o "(Peny)" al final identifican al responsable sin ambigüedad
+  const arroba = t.match(/@([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][\wÁÉÍÓÚÜÑáéíóúüñ .'-]{1,28})/);
+  if(arroba){ resp = arroba[1].trim(); t = t.replace(arroba[0],'').trim(); }
+
+  // el resto se parte por —, –, | o " - "
+  const partes = t.split(/\s+[—–|]\s+|\s+-\s+/).map(x=>x.trim()).filter(Boolean);
+  t = partes.shift() || '';
+  partes.forEach(p=>{
+    const f = p.match(RX_FECHA);
+    if(f && !fecha){
+      fecha = normFecha(f[1]) || fechaSuelta(f[1]);
+      if(/^\d{1,2}[\/-]\d{1,2}$/.test(f[1])) sinAnio = true;
+      const resto = p.replace(f[0],'').replace(/\b(para el|para|antes del|vence|fecha)\b/gi,'').replace(/[():,]/g,'').trim();
+      if(resto && !resp) resp = resto;
+    } else if(!resp) resp = p.replace(/[()]/g,'').trim();
+  });
+  // fecha pegada al final del texto, sin separador
+  if(!fecha){
+    const f = t.match(new RegExp('[(\\[]?\\s*'+RX_FECHA.source+'\\s*[)\\]]?\\s*$'));
+    if(f){ fecha = normFecha(f[1]) || fechaSuelta(f[1]);
+           if(/^\d{1,2}[\/-]\d{1,2}$/.test(f[1])) sinAnio = true;
+           t = t.slice(0, f.index).trim(); }
+  }
+  const par = t.match(/\(([^)]{2,30})\)\s*$/);
+  if(par && !resp){ resp = par[1].trim(); t = t.slice(0, par.index).trim(); }
+  return {texto:t.replace(/[.,;]+$/,'').trim(), resp:resp, fecha:fecha, hecho:hecho, _sinAnio:sinAnio};
+}
+// "15/09" sin año: lo completa la fecha de la reunión
+function fechaSuelta(v){
+  const f = String(v).match(/^(\d{1,2})[\/-](\d{1,2})$/);
+  if(!f) return '';
+  return (new Date().getFullYear())+'-'+p2(f[2])+'-'+p2(f[1]);
+}
+function conAnio(iso, refIso){
+  if(!iso || !refIso) return iso;
+  return refIso.slice(0,4)+iso.slice(4);
+}
+function tipoDesde(txt, titulo, marca){
+  const t = (txt||'').toLowerCase();
+  if(/1\s*a\s*1|uno a uno|one on one|1:1/.test(t)) return 'unoauno';
+  if(/cliente|weekly|cuenta/.test(t)) return 'cliente';
+  if(/interna|equipo/.test(t)) return 'interna';
+  if(/comercial|kick\s*off|propuesta|pitch/.test(t)) return 'comercial';
+  if(TIPOS.some(x=>x.k === t)) return t;
+  const g = (titulo||'').toLowerCase();
+  if(/1\s*a\s*1|uno a uno|1:1/.test(g)) return 'unoauno';
+  if(/kick\s*off|propuesta|pitch/.test(g)) return 'comercial';
+  if(/interna|equipo/.test(g)) return 'interna';
+  return marca ? 'cliente' : 'otro';
+}
+
 // Acepta el respaldo completo {v,minutas}, el formato {minutas:[…]} y una lista
 // pelada […]. Devuelve true si entró algo.
 function aplicarImport(texto, esArchivo){
@@ -1327,8 +1631,15 @@ function aplicarImport(texto, esArchivo){
              'Cancelar: las agrego a lo que ya hay.')){
     S.minutas = [];
   }
-
-  let nuevas = 0, actualizadas = 0;
+  return aplicarLista(lista, esArchivo);
+}
+function aplicarLista(lista, esArchivo){
+  const err = msg => {
+    const el = document.getElementById('imp-err');
+    if(el && !esArchivo) el.textContent = msg; else alert(msg);
+    return false;
+  };
+  let nuevas = 0, actualizadas = 0, ultimo = null;
   lista.forEach(x=>{
     const m = normMinuta(x);
     if(!m.titulo && !toText(m.notas)) return;               // basura: ni título ni cuerpo
@@ -1338,9 +1649,12 @@ function aplicarImport(texto, esArchivo){
       m.id = prev.id; m.creado = prev.creado; m.actualizado = Date.now();
       S.minutas[S.minutas.indexOf(prev)] = m; actualizadas++;
     } else { S.minutas.push(m); nuevas++; }
+    ultimo = m.id;
   });
   if(!nuevas && !actualizadas) return err('No pude leer ninguna minuta usable: revisá que traigan al menos título o notas.');
-  saveNow(); render();
+  saveNow();
+  // una sola minuta se abre para revisarla; varias, al listado
+  if(nuevas + actualizadas === 1 && ultimo) abrirMinuta(ultimo); else render();
   toast(nuevas+' minuta(s) nueva(s)'+(actualizadas?' · '+actualizadas+' actualizada(s)':''));
   return true;
 }
@@ -1362,6 +1676,7 @@ function reporteDe(m){
   if(toText(m.objetivo)){ L.push('OBJETIVO'); L.push(toText(m.objetivo)); L.push(''); }
   if(toText(m.notas)){ L.push('QUÉ SE HABLÓ'); L.push(toText(m.notas)); L.push(''); }
   if(toText(m.decisiones)){ L.push('DECISIONES'); L.push(toText(m.decisiones)); L.push(''); }
+  if(toText(m.riesgos)){ L.push('RIESGOS Y ALERTAS'); L.push(toText(m.riesgos)); L.push(''); }
   if(m.pendientes.length){
     L.push('PENDIENTES');
     m.pendientes.forEach(p=>{
@@ -1420,6 +1735,7 @@ function buscar(q){
       ['Título', m.titulo], ['Marca', m.marca], ['Participantes', m.participantes.join(', ')],
       ['Etiquetas', m.tags.join(', ')], ['Objetivo', toText(m.objetivo)],
       ['Qué se habló', toText(m.notas)], ['Decisiones', toText(m.decisiones)],
+      ['Riesgos', toText(m.riesgos)],
       ['Pendientes', m.pendientes.map(p=>p.texto+(p.resp?' ('+p.resp+')':'')).join(' · ')]
     ];
     campos.forEach(c=>{

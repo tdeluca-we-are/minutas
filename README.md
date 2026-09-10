@@ -42,10 +42,39 @@ mismo que la local apenas iniciás sesión.
 - **Config** — pegar minutas en JSON (lo que devuelve Claude al volcar una reunión de
   Tactiq), exportar/importar respaldo, exportar todo en `.txt`.
 
-## Traer una reunión de Tactiq
+## Cargar una reunión desde un chat
 
-Pedirle a Claude *"volcá al minutero la reunión de hoy con X"*. Devuelve un bloque JSON con
-esta forma, que se pega en **Config → Pegar minutas**:
+El flujo pensado es: el resumen lo arma Claude en un chat normal, y se pega en el minutero
+**tal cual**, sin pedirle ningún formato de máquina.
+
+1. En **Config → Copiar el prompt para el chat** está el prompt fijo (la constante
+   `PROMPT_RESUMEN` del script). Se pega en Claude junto con la reunión, o pidiéndole que la
+   busque en Tactiq.
+2. Se copia el resumen que devuelve.
+3. **Config → Pegar una reunión**: la app lo interpreta, muestra qué entendió y recién con
+   *Confirmar e importar* lo guarda. Si es una sola, la abre para revisarla.
+
+El prompt y el parser viven en el mismo archivo a propósito: si cambia el formato del
+resumen, se cambian los dos juntos.
+
+El parser es tolerante — acepta encabezados en mayúscula o minúscula, con `##`, con `**` o
+con dos puntos, y reconoce estas secciones (con sinónimos): **Objetivo** (contexto, motivo),
+**Qué se habló** (temas, notas, resumen), **Decisiones** (acuerdos, definiciones),
+**Riesgos** (alertas), **Pendientes** (tareas, próximos pasos, action items). Las claves del
+encabezado son `Título`, `Fecha`, `Hora`, `Tipo`, `Marca` (o cuenta/cliente),
+`Participantes`, `Etiquetas` y `Próxima reunión`. Varias reuniones en un mismo texto se
+separan con una línea de `---`.
+
+Cada pendiente se escribe `- [ ] qué hay que hacer — Responsable — DD/MM`. El responsable
+también se reconoce como `@Nombre` o `(Nombre)`, y una fecha sin año cae en el año de la
+reunión. Lo que no cae en ninguna sección va a *qué se habló*, así que nunca se pierde texto.
+
+Si el tipo no viene, se deduce del título y de si hay marca: "1 a 1" → 1 a 1, "kickoff" →
+comercial, con marca → cliente.
+
+### Formato JSON (alternativa)
+
+Sigue funcionando pegar JSON, útil si en algún momento conviene que Claude lo genere:
 
 ```json
 {"minutas":[{
@@ -59,6 +88,7 @@ esta forma, que se pega en **Config → Pegar minutas**:
   "objetivo":"...",
   "notas":"...",
   "decisiones":"...",
+  "riesgos":"...",
   "pendientes":[{"texto":"...","resp":"Peny","fecha":"2026-09-15"}],
   "proxima":"2026-09-15",
   "fuente":"tactiq",
