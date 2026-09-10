@@ -31,16 +31,16 @@ mismo que la local apenas iniciás sesión.
 
 - **Minutas** — historial completo agrupado por mes, con filtros por tipo, marca,
   participante y rango de fechas, más un filtro de texto sobre todo el contenido.
-- **Detalle** — título, fecha, hora, tipo, marca, participantes y etiquetas; tres bloques
-  de notas con formato (objetivo, qué se habló, decisiones), pendientes con responsable y
-  fecha, y las reuniones anteriores de la misma marca o con la misma gente.
+- **Detalle** — título, fecha, hora, tipo, marca, participantes y etiquetas; cuatro bloques
+  de notas con formato (objetivo, qué se habló, decisiones y riesgos), pendientes con
+  responsable y fecha, y las reuniones anteriores de la misma marca o con la misma gente.
 - **Pendientes** — todo lo que quedó abierto en cualquier reunión, filtrable por estado,
   responsable y marca, con link a la minuta de origen.
 - **Personas y marcas** — cuántas reuniones tuviste con cada uno, cuándo fue la última y
   el historial completo en orden, exportable como texto.
 - **Buscador global** (Ctrl+K) sobre todas las minutas, con el fragmento resaltado.
-- **Config** — pegar minutas en JSON (lo que devuelve Claude al volcar una reunión de
-  Tactiq), exportar/importar respaldo, exportar todo en `.txt`.
+- **Config** — pegar el resumen que te armó Claude (ver abajo), copiar el prompt que fija su
+  formato, exportar/importar respaldo y exportar todo en `.txt`.
 
 ## Cargar una reunión desde un chat
 
