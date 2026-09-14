@@ -1536,10 +1536,13 @@ const FIN = '(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])';
 // "Pedidos directos", "Alertas de alcance", "Riesgos y visión estratégica".
 const SECCIONES = [
   {campo:'objetivo',   rx:new RegExp('^(objetivo|contexto|para qu[eé] (era|fue)|motivo)'+FIN,'i')},
-  {campo:'notas',      rx:new RegExp('^(qu[eé] se habl[oó]|temas|notas|resumen|desarrollo|puntos|discusi[oó]n|lo hablado|requerimientos|pedidos|feedback|planteos)'+FIN,'i')},
+  {campo:'notas',      rx:new RegExp('^(qu[eé] se habl[oó]|temas|notas|mini[\\s-]?resumen|resumen|desarrollo|puntos|discusi[oó]n|lo hablado|requerimientos|pedidos|feedback|planteos)'+FIN,'i')},
   {campo:'decisiones', rx:new RegExp('^(decisiones|definiciones|acuerdos|lo que se defini[oó]|conclusiones)'+FIN,'i')},
-  {campo:'riesgos',    rx:new RegExp('^(riesgos|alertas|se[ñn]ales|atenci[oó]n|para tener en cuenta|dependencias)'+FIN,'i')},
-  {campo:'pendientes', rx:new RegExp('^(pendientes|tareas|acciones|action items|to-?dos?|compromisos)'+FIN,'i')},
+  // "Riesgo de relación" (singular, y a veces con ⚠️ adelante que limpiaLinea saca)
+  {campo:'riesgos',    rx:new RegExp('^(riesgos?( de relaci[oó]n)?|alertas?|se[ñn]ales|atenci[oó]n|para tener en cuenta|dependencias)'+FIN,'i')},
+  // Además de "Pendientes/Tareas", el formato interno agrupa por persona:
+  // "Tus tareas (Tomás)", "Mis tareas", "Resto por persona".
+  {campo:'pendientes', rx:new RegExp('^(pendientes|tareas|tus tareas?|mis tareas?|acciones|action items|to-?dos?|compromisos|resto( por persona| del equipo)?)'+FIN,'i')},
   // "Próximos pasos" es ambiguo: a veces son las tareas, a veces el cierre
   // narrativo de un resumen que ya trae su propia sección de pendientes. Se
   // decide al final, cuando ya se sabe si hubo pendientes.
@@ -1587,8 +1590,30 @@ function sinParen(s){ const m = String(s).trim().match(/^\((.*)\)$/); return (m 
 // de sección ("3. Pendientes") y sin dos puntos al final.
 function limpiaLinea(l){
   return l.replace(/^\s*#{1,6}\s*/,'').replace(/^\s*\d+[.)]\s+/,'')
+          .replace(/^[\s☀-➿⬀-⯿️\u{1F000}-\u{1FAFF}]+/u,'')  // ⚠️ 🔴 etc. al inicio
           .replace(/^\s*\*\*(.+?)\*\*\s*:?\s*$/,'$1')
           .replace(/\*\*/g,'').replace(/\s*:\s*$/,'').trim();
+}
+// De un encabezado de pendientes saca el dueño: "Tus tareas (Tomás)" o
+// "Tareas de Tomás" → Tomás; "Resto por persona"/"Pendientes" → null.
+function ownerDeHeader(l){
+  const t = l.toLowerCase();
+  if(/^(resto|pendientes|acciones|action items|compromisos|to-?dos?|otras tareas)/.test(t)) return null;
+  const par = l.match(/\(([^)]{2,30})\)/);
+  if(par) return par[1].trim();
+  const de = l.match(/tareas?\s+de\s+([A-Za-zÁÉÍÓÚÑáéíóúñ .'-]{2,30})/i);
+  if(de) return de[1].trim();
+  if(/mis tareas|tus tareas|tareas m[ií]as/.test(t)) return 'Tomás';
+  return null;
+}
+// Dentro de pendientes, una línea sin viñeta puede ser un subencabezado de
+// persona ("Mercedes (Pauta)") o un rótulo ("Resto por persona"). Devuelve el
+// nombre, o null para el rótulo, o undefined si no es ni una cosa ni la otra.
+function ownerDeSub(l){
+  if(/^(resto|otras tareas|equipo|pendientes|tareas)\b/i.test(l)) return null;
+  const m = l.match(/^([A-ZÁÉÍÓÚÑ][^\n(:.;]{1,38}?)\s*(?:\([^)]*\))?\s*:?\s*$/);
+  if(m && m[1].trim().split(/\s+/).length <= 3) return m[1].trim();
+  return undefined;
 }
 // "Fecha: 2026-09-10 · Hora: 15:04" son dos claves en un renglón. Solo se parte
 // si cada trozo posterior es una clave conocida, para no cortar texto que use "·".
@@ -1607,7 +1632,7 @@ function parseTexto(txt){
 function parseBloque(bloque){
   const m = {tipo:'', participantes:[], tags:[], pendientes:[]};
   const buf = {objetivo:[], notas:[], decisiones:[], riesgos:[], pendientes:[], _pasos:[]};
-  let sec = null, vistoAlgo = false;
+  let sec = null, vistoAlgo = false, ownerActual = null;
 
   // el preámbulo puede traer dos claves por renglón separadas por "·"
   const lineas = [];
@@ -1627,7 +1652,8 @@ function parseBloque(bloque){
     // para no fundir dos listas distintas en una sola.
     const s = limpia && SECCIONES.find(x => x.rx.test(limpia));
     if(s && limpia.length < 70){
-      if(buf[s.campo].length && s.campo !== 'pendientes') buf[s.campo].push({sub:limpia});
+      if(s.campo === 'pendientes') ownerActual = ownerDeHeader(limpia);   // "Tus tareas (Tomás)" / "Resto…"
+      else if(buf[s.campo].length) buf[s.campo].push({sub:limpia});
       sec = s.campo; vistoAlgo = true; return;
     }
 
@@ -1657,9 +1683,17 @@ function parseBloque(bloque){
     }
 
     if(sec){
-      // dentro de pendientes solo cuentan las viñetas: "Tarea de Tomás" y "Resto"
-      // son rótulos del resumen, no tareas
-      if(sec === 'pendientes' && !/^\s*(?:[-*•·]|\d+[.)])\s+/.test(linea)) return;
+      if(sec === 'pendientes'){
+        const esVinieta = /^\s*(?:[-*•·]|\d+[.)])\s+/.test(linea);
+        if(!esVinieta){
+          // subencabezado de persona ("Mercedes (Pauta)") o rótulo ("Resto por persona")
+          const o = ownerDeSub(limpia);
+          if(o !== undefined) ownerActual = o;
+          return;
+        }
+        buf.pendientes.push({l:linea, owner:ownerActual});
+        return;
+      }
       buf[sec].push({l:linea});
       return;
     }
@@ -1682,9 +1716,11 @@ function parseBloque(bloque){
   m.notas      = aHtml(buf.notas);
   m.decisiones = aHtml(buf.decisiones);
   m.riesgos    = aHtml(buf.riesgos);
-  m.pendientes = buf.pendientes.map(x => parsePendiente(x.l, m.fecha)).filter(p => p && p.texto);
+  m.pendientes = buf.pendientes.map(x => parsePendiente(x.l, m.fecha, x.owner)).filter(p => p && p.texto);
 
   m.tipo = tipoDesde(m.tipo, m.titulo, m.marca);
+  // sin "Tipo:" ni pistas en el título, una WAR/interna se reconoce por el texto
+  if(m.tipo === 'otro' && /\b(war|reuni[oó]n interna|interna de|equipo interno)\b/i.test(toText(m.notas))) m.tipo = 'interna';
   if(!m.clima) m.clima = climaSugerido(m);   // sin "Clima:" explícito, lo deducimos
   // fechas de pendiente sin año: caen en el año de la reunión
   m.pendientes.forEach(p=>{ if(p._sinAnio) p.fecha = conAnio(p.fecha, m.fecha); delete p._sinAnio; });
@@ -1738,7 +1774,7 @@ function addDias(d,n){ const x = new Date(d); x.setDate(x.getDate()+n); return x
      Crear campaña — primero Meta y después Search — Malena — Alta — 15/09
    Se leen de derecha a izquierda, que es donde viven los metadatos, y lo que
    sobra vuelve al texto: perder la descripción sería peor que un texto largo. */
-function parsePendiente(linea, refIso){
+function parsePendiente(linea, refIso, ownerPorDefecto){
   let t = String(linea).replace(/^\s*[-*•·]\s*/,'').replace(/^\s*\d+[.)]\s*/,'').replace(/`/g,'').trim();
   if(!t) return null;
   let hecho = false, prio = '', resp = '', fecha = '', sinAnio = false;
@@ -1750,8 +1786,11 @@ function parsePendiente(linea, refIso){
   if(arroba){ resp = arroba[1].trim(); t = t.replace(arroba[0],'').trim(); }
 
   const partes = t.split(/\s+[—–|]\s+|\s+-\s+/).map(x=>x.trim().replace(/[.;,]+$/,'')).filter(Boolean);
-  // un nombre es corto y no es una frase: así se distingue "Malena" de la descripción
-  const esNombre = p => p.length <= 40 && p.split(/\s+/).length <= 5 && !/[.;]/.test(p);
+  // Un responsable es un nombre propio: 1-3 palabras, arranca en mayúscula, sin
+  // números ni puntuación de frase. Así "Malena" o "Marisa Caballero" pasan, pero
+  // "los 3 temas" o "Jorge iba a bajarlas" (una frase) no se cuelan como resp.
+  const esNombre = p => { const w = p.trim().split(/\s+/);
+    return w.length <= 3 && /^[A-ZÁÉÍÓÚÑ(]/.test(p.trim()) && !/\d/.test(p) && !/[.;:]/.test(p); };
   for(let i = partes.length - 1; i >= 1; i--){
     const p = partes[i];
     if(!fecha){
@@ -1778,6 +1817,8 @@ function parsePendiente(linea, refIso){
   }
   const par = t.match(/\(([^)]{2,30})\)\s*$/);
   if(par && !resp && esNombre(par[1])){ resp = par[1].trim(); t = t.slice(0, par.index).trim(); }
+  // en el formato agrupado por persona el responsable es el dueño del grupo
+  if(!resp && ownerPorDefecto) resp = ownerPorDefecto;
   return {texto:t.replace(/[.,;]+$/,'').trim(), resp:resp, fecha:fecha, hecho:hecho, prio:prio, _sinAnio:sinAnio};
 }
 // "15/09" sin año: lo completa la fecha de la reunión
