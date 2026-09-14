@@ -484,6 +484,9 @@ const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_ANON) : nul
 const LS = 'minutas_v1';           // caché local: espejo de lo último conocido
 const LS_META = 'minutas_meta';
 const TABLA = 'min_estado';
+// Sello de versión: sirve para saber si el navegador está sirviendo una copia
+// vieja cacheada. Se muestra en Config. Subir con cada cambio del parser.
+const VERSION_APP = '2026-09-14d';
 
 const TIPOS = [
   {k:'cliente',  n:'Cliente'},
@@ -1405,7 +1408,8 @@ function paneConfig(){
       '<div class="section-body">'+
         '<div class="hint" style="line-height:1.8">'+
           'Sesión: <b>'+esc(MAIL||'—')+'</b><br>'+
-          'Tabla: <b>'+TABLA+'</b> · versión <b>'+VERSION+'</b><br>'+
+          'Versión de la app: <b>'+VERSION_APP+'</b><br>'+
+          'Tabla: <b>'+TABLA+'</b> · versión de datos <b>'+VERSION+'</b><br>'+
           'Caché local: '+(m.ts ? 'al día ('+esc(hace(m.ts))+')' : 'vacía')+
           (m.pendiente ? ' — <b style="color:var(--amber)">hay cambios sin subir</b>' : '')+
         '</div>'+
@@ -1684,13 +1688,10 @@ function parseBloque(bloque){
 
     if(sec){
       if(sec === 'pendientes'){
-        const esVinieta = /^\s*(?:[-*•·]|\d+[.)])\s+/.test(linea);
-        if(!esVinieta){
-          // subencabezado de persona ("Mercedes (Pauta)") o rótulo ("Resto por persona")
-          const o = ownerDeSub(limpia);
-          if(o !== undefined) ownerActual = o;
-          return;
-        }
+        const o = ownerDeSub(limpia);
+        if(o !== undefined){ ownerActual = o; return; }   // subencabezado de persona o rótulo
+        // Cualquier otra línea es una tarea. Muchas veces vienen con viñeta, pero
+        // arturito a veces las escribe como líneas sueltas: igual las tomamos.
         buf.pendientes.push({l:linea, owner:ownerActual});
         return;
       }
@@ -1698,8 +1699,12 @@ function parseBloque(bloque){
       return;
     }
 
-    // Preámbulo sin clave: la primera línea con texto es el título
-    if(!m.titulo && limpia && limpia.length > 2){ m.titulo = limpia; vistoAlgo = true; return; }
+    // Preámbulo sin clave: la primera línea corta es el título. Una línea larga o
+    // que termina en punto es un párrafo (un resumen que arranca sin encabezado),
+    // no un título: va a notas y la minuta queda "sin título" para completar.
+    if(!m.titulo && limpia && limpia.length > 2 && limpia.length <= 80 && !/[.!?]\s*$/.test(limpia)){
+      m.titulo = limpia; vistoAlgo = true; return;
+    }
     if(limpia) buf.notas.push({l:linea});
   });
 
